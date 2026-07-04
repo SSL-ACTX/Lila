@@ -206,7 +206,10 @@ impl CFGBuilder {
 
                             if let Some(lane) = idx_val {
                                 if lane < lanes {
-                                    push_inst!(self, InstructionKind::SIMDExtractLane(dest, arr, lane));
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::SIMDExtractLane(dest, arr, lane)
+                                    );
                                     self.func.set_type(dest, inner_ty);
                                     return Ok(dest);
                                 } else {

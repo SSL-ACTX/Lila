@@ -114,8 +114,8 @@ def matmul(a: Tensor[f32, M, N], b: Tensor[f32, N, K], out: Tensor[f32, M, K]):
     for i in range(M):
         for j in range(K):
             sum_val: f32 = 0.0
-            for l in range(N):
-                sum_val = sum_val + a[i, l] * b[l, j]
+            for k_idx in range(N):
+                sum_val = sum_val + a[i, k_idx] * b[k_idx, j]
             out[i, j] = sum_val
 
 
@@ -857,8 +857,8 @@ def bmm(
         for i in range(M):
             for j in range(K):
                 sum_val: f32 = 0.0
-                for l in range(N):
-                    sum_val = sum_val + a[batch, i, l] * b[batch, l, j]
+                for k_idx in range(N):
+                    sum_val = sum_val + a[batch, i, k_idx] * b[batch, k_idx, j]
                 out[batch, i, j] = sum_val
 
 

@@ -137,16 +137,17 @@ pub struct TranslationContext<'a, B: SolverBackend> {
     pub safety_checks: Vec<SafetyCheck<B>>,
 }
 
-fn get_counterexample_string<B: SolverBackend>(
-    t_ctx: &TranslationContext<'_, B>,
-) -> String {
+fn get_counterexample_string<B: SolverBackend>(t_ctx: &TranslationContext<'_, B>) -> String {
     let mut parts = Vec::new();
     for i in 1..t_ctx.func.arg_count {
         let val = Value(i);
-        let name = t_ctx.func.arg_names.get(i)
+        let name = t_ctx
+            .func
+            .arg_names
+            .get(i)
             .cloned()
             .unwrap_or_else(|| format!("arg{}", i - 1));
-        
+
         if let Some(bv_val) = t_ctx.z3_bvs.get(&val) {
             if let Some(s) = t_ctx.backend.eval_bv(bv_val) {
                 parts.push(format!("{} = {}", name, s));
@@ -205,7 +206,6 @@ impl<'a, B: SolverBackend> TranslationContext<'a, B> {
         }
     }
 }
-
 
 /// Formally verifies a Lirien JIT function using SMT context building and safety checks.
 ///
@@ -275,11 +275,13 @@ pub fn verify_with_context<
                 .map(|l| format!(" at {}", l))
                 .unwrap_or_default();
             t_ctx.backend.pop(1);
-            return Err(format!("{}{}{}", check.error_message, counterexample, loc_info));
+            return Err(format!(
+                "{}{}{}",
+                check.error_message, counterexample, loc_info
+            ));
         }
         t_ctx.backend.pop(1);
     }
-
 
     returns::verify_return_refinements(&mut t_ctx)?;
 

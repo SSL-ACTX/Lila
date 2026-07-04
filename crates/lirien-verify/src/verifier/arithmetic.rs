@@ -484,7 +484,14 @@ pub fn translate<
 
                 let is_vector = matches!(
                     ty,
-                    Type::F32X4 | Type::F64X2 | Type::I32X4 | Type::I64X2 | Type::I8X16 | Type::U8X16 | Type::I16X8 | Type::U16X8
+                    Type::F32X4
+                        | Type::F64X2
+                        | Type::I32X4
+                        | Type::I64X2
+                        | Type::I8X16
+                        | Type::U8X16
+                        | Type::I16X8
+                        | Type::U16X8
                 );
 
                 // Optimization: Use interval analysis to skip Z3 check if possible

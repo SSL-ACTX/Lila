@@ -147,4 +147,3 @@ pub trait SolverBackend {
     /// Evaluates a bitvector expression in the current model.
     fn eval_bv(&self, val: &Self::BV) -> Option<String>;
 }
-

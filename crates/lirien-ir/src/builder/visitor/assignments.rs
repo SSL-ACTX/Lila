@@ -122,7 +122,10 @@ impl CFGBuilder {
 
                             if let Some(lane) = idx_val {
                                 if lane < lanes {
-                                    push_inst!(self, InstructionKind::SIMDInsertLane(dest_arr, arr, value, lane));
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::SIMDInsertLane(dest_arr, arr, value, lane)
+                                    );
                                     self.func.set_type(dest_arr, arr_ty.clone());
                                     // Let the fallthrough update the local variable SSA map
                                 } else {
@@ -141,53 +144,53 @@ impl CFGBuilder {
                             }
                         } else {
                             match arr_ty {
-                            Type::Buffer(inner) => {
-                                push_inst!(
-                                    self,
-                                    InstructionKind::BufferStore(
-                                        dest_arr,
-                                        arr,
-                                        idx,
-                                        value,
-                                        *inner.clone(),
-                                    )
-                                );
-                                self.func.set_type(dest_arr, Type::Buffer(inner));
-                            }
-                            Type::List(inner) => {
-                                push_inst!(
-                                    self,
-                                    InstructionKind::ListStore(dest_arr, arr, idx, value,)
-                                );
-                                self.func.set_type(dest_arr, Type::List(inner));
-                            }
-                            Type::Array(inner, size) => {
-                                push_inst!(
-                                    self,
-                                    InstructionKind::ArrayStore(
-                                        dest_arr,
-                                        arr,
-                                        idx,
-                                        value,
-                                        *inner.clone(),
-                                    )
-                                );
-                                self.func.set_type(dest_arr, Type::Array(inner, size));
-                            }
-                            _ => {
-                                push_inst!(
-                                    self,
-                                    InstructionKind::ArrayStore(
-                                        dest_arr,
-                                        arr,
-                                        idx,
-                                        value,
-                                        Type::Unknown,
-                                    )
-                                );
+                                Type::Buffer(inner) => {
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::BufferStore(
+                                            dest_arr,
+                                            arr,
+                                            idx,
+                                            value,
+                                            *inner.clone(),
+                                        )
+                                    );
+                                    self.func.set_type(dest_arr, Type::Buffer(inner));
+                                }
+                                Type::List(inner) => {
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::ListStore(dest_arr, arr, idx, value,)
+                                    );
+                                    self.func.set_type(dest_arr, Type::List(inner));
+                                }
+                                Type::Array(inner, size) => {
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::ArrayStore(
+                                            dest_arr,
+                                            arr,
+                                            idx,
+                                            value,
+                                            *inner.clone(),
+                                        )
+                                    );
+                                    self.func.set_type(dest_arr, Type::Array(inner, size));
+                                }
+                                _ => {
+                                    push_inst!(
+                                        self,
+                                        InstructionKind::ArrayStore(
+                                            dest_arr,
+                                            arr,
+                                            idx,
+                                            value,
+                                            Type::Unknown,
+                                        )
+                                    );
+                                }
                             }
                         }
-                    }
                     }
                 }
 

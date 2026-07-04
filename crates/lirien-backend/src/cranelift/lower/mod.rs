@@ -275,7 +275,11 @@ fn lower_instruction_internal<M: Module>(
             ctx.tensor_dims.insert(*dest, vec![m, k]);
             Ok(())
         }
-        InstructionKind::Assert(_, _) => Ok(()),
+        InstructionKind::Assert(test, _) => {
+            let cond_val = get_val(&ctx.values, test);
+            ctx.builder.ins().trapz(cond_val, TrapCode::User(1));
+            Ok(())
+        }
         InstructionKind::Nop() => Ok(()),
     }
 }
