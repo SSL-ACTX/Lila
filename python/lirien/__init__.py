@@ -1,3 +1,4 @@
+import sys
 from .types import (
     struct,
     value,
@@ -47,7 +48,7 @@ from .decorators import (
     ensures,
     invariant,
 )
-from . import num
+from .stdlib import num
 from .diagnostics import (
     get_cpu_info,
     VerificationError,
@@ -121,3 +122,5 @@ __all__ = [
     "TypeVar",
     "num",
 ]
+
+sys.modules["lirien.num"] = num

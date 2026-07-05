@@ -356,7 +356,7 @@ def _discover_types(
                 and "lirien/compiler.py" not in f_tmp.f_code.co_filename
                 and "lirien/decorators.py" not in f_tmp.f_code.co_filename
                 and "lirien/signatures.py" not in f_tmp.f_code.co_filename
-                and "lirien/ffi.py" not in f_tmp.f_code.co_filename
+                and "lirien/ffi" not in f_tmp.f_code.co_filename
             ):
                 scope.update(f_tmp.f_locals)
                 break
