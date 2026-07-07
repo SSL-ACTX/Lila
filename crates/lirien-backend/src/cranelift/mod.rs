@@ -3,6 +3,7 @@
 //! Translates Lirien IR types and basic block flows into Cranelift IR,
 //! links native math helper symbols and memory routines, compiles, and registers target function pointers.
 
+use cranelift::codegen::ir::MemFlagsData;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
@@ -795,7 +796,11 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
                             let ptr = cg_ctx.builder.block_params(entry_block)[p_idx];
                             p_idx += 1;
                             let cl_ty = translate_type(&ty);
-                            let vec_val = cg_ctx.builder.ins().load(cl_ty, MemFlags::new(), ptr, 0);
+                            let vec_val =
+                                cg_ctx
+                                    .builder
+                                    .ins()
+                                    .load(cl_ty, MemFlagsData::new(), ptr, 0);
                             cg_ctx.values.insert(val, vec_val);
                         }
                         _ => {

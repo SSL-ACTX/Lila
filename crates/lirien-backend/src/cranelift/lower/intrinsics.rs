@@ -86,9 +86,13 @@ pub fn lower<M: Module>(
 
     if is_sret {
         let size = ret_ty.size(&ctx.ssa_func.struct_layouts);
-        let slot = ctx
-            .builder
-            .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size as u32));
+        let align = ret_ty.align(&ctx.ssa_func.struct_layouts);
+        let align_shift = align.trailing_zeros() as u8;
+        let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            size as u32,
+            align_shift,
+        ));
         let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
         arg_vals.push(addr);
         sret_slot = Some(slot);

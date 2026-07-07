@@ -1,4 +1,5 @@
 use super::{get_all_cl_values, get_val, CodegenContext, LoweringError};
+use cranelift::codegen::ir::{BlockArg, MemFlagsData};
 use cranelift::prelude::*;
 use cranelift_module::Module;
 use lirien_ir::ir::{BlockId as SsaBlockId, InstructionKind, Type as SsaType};
@@ -25,6 +26,7 @@ pub fn lower<M: Module>(
                     }
                 }
             }
+            let args: Vec<BlockArg> = args.into_iter().map(BlockArg::Value).collect();
             ctx.builder.ins().jump(dest_block, &args);
         }
         InstructionKind::Branch(cond, t, f) => {
@@ -56,6 +58,8 @@ pub fn lower<M: Module>(
                 }
             }
 
+            let t_args: Vec<BlockArg> = t_args.into_iter().map(BlockArg::Value).collect();
+            let f_args: Vec<BlockArg> = f_args.into_iter().map(BlockArg::Value).collect();
             let cond_b1 = ctx.builder.ins().icmp_imm(IntCC::NotEqual, c, 0);
             ctx.builder
                 .ins()
@@ -104,6 +108,7 @@ pub fn lower<M: Module>(
             // Now fill trampolines
             for (trampoline, target_cl_block, phi_args) in trampolines {
                 ctx.builder.switch_to_block(trampoline);
+                let phi_args: Vec<BlockArg> = phi_args.into_iter().map(BlockArg::Value).collect();
                 ctx.builder.ins().jump(target_cl_block, &phi_args);
             }
         }
@@ -139,7 +144,7 @@ pub fn lower<M: Module>(
                     let dest_ptr = ctx.sret_ptr.expect("Missing SRet pointer for SIMD");
                     ctx.builder
                         .ins()
-                        .store(MemFlags::new(), vec_val, dest_ptr, 0);
+                        .store(MemFlagsData::new(), vec_val, dest_ptr, 0);
                 }
                 ctx.builder.ins().return_(&[]);
             } else if ctx.is_tuple_return {
@@ -152,25 +157,31 @@ pub fn lower<M: Module>(
                     while offset + 8 <= total_size {
                         let chunk = ctx.builder.ins().load(
                             types::I64,
-                            MemFlags::new(),
+                            MemFlagsData::new(),
                             tuple_ptr,
                             offset as i32,
                         );
-                        ctx.builder
-                            .ins()
-                            .store(MemFlags::new(), chunk, dest_ptr, offset as i32);
+                        ctx.builder.ins().store(
+                            MemFlagsData::new(),
+                            chunk,
+                            dest_ptr,
+                            offset as i32,
+                        );
                         offset += 8;
                     }
                     while offset < total_size {
                         let chunk = ctx.builder.ins().load(
                             types::I8,
-                            MemFlags::new(),
+                            MemFlagsData::new(),
                             tuple_ptr,
                             offset as i32,
                         );
-                        ctx.builder
-                            .ins()
-                            .store(MemFlags::new(), chunk, dest_ptr, offset as i32);
+                        ctx.builder.ins().store(
+                            MemFlagsData::new(),
+                            chunk,
+                            dest_ptr,
+                            offset as i32,
+                        );
                         offset += 1;
                     }
                 }

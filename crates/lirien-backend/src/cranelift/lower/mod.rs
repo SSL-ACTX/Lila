@@ -277,7 +277,7 @@ fn lower_instruction_internal<M: Module>(
         }
         InstructionKind::Assert(test, _) => {
             let cond_val = get_val(&ctx.values, test);
-            ctx.builder.ins().trapz(cond_val, TrapCode::User(1));
+            ctx.builder.ins().trapz(cond_val, TrapCode::unwrap_user(1));
             Ok(())
         }
         InstructionKind::Nop() => Ok(()),

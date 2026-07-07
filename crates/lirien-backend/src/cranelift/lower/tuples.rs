@@ -1,4 +1,5 @@
 use super::{get_val, CodegenContext, LoweringError};
+use cranelift::codegen::ir::MemFlagsData;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 use lirien_ir::ir::InstructionKind;
@@ -11,10 +12,13 @@ pub fn lower<M: Module>(
         InstructionKind::TupleCreate(dest, elts) => {
             let tuple_ty = ctx.ssa_func.get_type(*dest);
             let size = tuple_ty.size(&ctx.ssa_func.struct_layouts);
+            let align = tuple_ty.align(&ctx.ssa_func.struct_layouts);
+            let align_shift = align.trailing_zeros() as u8;
 
             let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 size as u32,
+                align_shift,
             ));
 
             let mut offset = 0;
@@ -75,10 +79,12 @@ pub fn lower<M: Module>(
                     ctx.values.insert(*dest, res);
                 } else {
                     let cl_ty = super::translate_type(dest_ty);
-                    let res =
-                        ctx.builder
-                            .ins()
-                            .load(cl_ty, MemFlags::new(), tuple_addr, offset as i32);
+                    let res = ctx.builder.ins().load(
+                        cl_ty,
+                        MemFlagsData::new(),
+                        tuple_addr,
+                        offset as i32,
+                    );
                     ctx.values.insert(*dest, res);
                 }
             }
