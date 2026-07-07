@@ -3,6 +3,7 @@
 //! Translates Lirien IR types and basic block flows into Cranelift IR,
 //! links native math helper symbols and memory routines, compiles, and registers target function pointers.
 
+use cranelift::codegen::ir::MemFlagsData;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
@@ -694,6 +695,15 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
                                 .builder
                                 .append_block_param(current_cl_block, types::I64);
                             cg_ctx.buffer_lengths.insert(*dest, cl_len);
+                        } else if let SsaType::Tensor(_, ref dims) = ty {
+                            let mut dim_vals = Vec::new();
+                            for _ in 0..dims.len() {
+                                let cl_dim = cg_ctx
+                                    .builder
+                                    .append_block_param(current_cl_block, types::I64);
+                                dim_vals.push(cl_dim);
+                            }
+                            cg_ctx.tensor_dims.insert(*dest, dim_vals);
                         }
                     }
                 }
@@ -786,7 +796,11 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
                             let ptr = cg_ctx.builder.block_params(entry_block)[p_idx];
                             p_idx += 1;
                             let cl_ty = translate_type(&ty);
-                            let vec_val = cg_ctx.builder.ins().load(cl_ty, MemFlags::new(), ptr, 0);
+                            let vec_val =
+                                cg_ctx
+                                    .builder
+                                    .ins()
+                                    .load(cl_ty, MemFlagsData::new(), ptr, 0);
                             cg_ctx.values.insert(val, vec_val);
                         }
                         _ => {
@@ -811,7 +825,10 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
 
     module
         .define_function(func_id, &mut ctx)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            tracing::error!(target: "lirien::jit", "[Cranelift Compilation Error] Detailed error: {:?}", e);
+            e.to_string()
+        })?;
     module.finalize_definitions().map_err(|e| e.to_string())?;
     let code = module.get_finalized_function(func_id);
     Ok(code as usize)

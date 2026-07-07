@@ -1,6 +1,7 @@
 use super::{
     get_all_cl_values, get_flattened_types, get_val, translate_type, CodegenContext, LoweringError,
 };
+use cranelift::codegen::ir::MemFlagsData;
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 use lirien_ir::ir::{Type as SsaType, Value as SsaValue};
@@ -35,7 +36,7 @@ pub fn lower<M: Module>(
     let cl_fn_ptr = if is_closure {
         ctx.builder
             .ins()
-            .load(types::I64, MemFlags::new(), cl_fn_val, 0)
+            .load(types::I64, MemFlagsData::new(), cl_fn_val, 0)
     } else {
         cl_fn_val
     };
@@ -45,9 +46,13 @@ pub fn lower<M: Module>(
 
     if is_sret {
         let size = ret_ty.size(&ctx.ssa_func.struct_layouts);
-        let slot = ctx
-            .builder
-            .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size as u32));
+        let align = ret_ty.align(&ctx.ssa_func.struct_layouts);
+        let align_shift = align.trailing_zeros() as u8;
+        let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            size as u32,
+            align_shift,
+        ));
         let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
         arg_vals.push(addr);
         sret_addr = Some(addr);
@@ -164,7 +169,7 @@ pub fn lower_lambda<M: Module>(
     // Store fn_ptr
     ctx.builder
         .ins()
-        .store(MemFlags::new(), fn_ptr, closure_ptr, 0);
+        .store(MemFlagsData::new(), fn_ptr, closure_ptr, 0);
 
     // Store captures
     for (i, capture) in captures.iter().enumerate() {
@@ -183,7 +188,7 @@ pub fn lower_lambda<M: Module>(
         } else {
             ctx.builder
                 .ins()
-                .store(MemFlags::new(), val, closure_ptr, offset as i32);
+                .store(MemFlagsData::new(), val, closure_ptr, offset as i32);
         }
     }
 

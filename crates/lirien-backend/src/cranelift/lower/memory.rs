@@ -1,4 +1,5 @@
 use super::{get_len, get_val, translate_type, CodegenContext, LoweringError};
+use cranelift::codegen::ir::{BlockArg, MemFlagsData};
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 use lirien_ir::ir::{InstructionKind, Type as SsaType};
@@ -177,9 +178,12 @@ pub fn lower<M: Module>(
                 get_val(&ctx.values, val)
             } else {
                 let size = val_ty.size(&ctx.ssa_func.struct_layouts);
+                let align = val_ty.align(&ctx.ssa_func.struct_layouts);
+                let align_shift = align.trailing_zeros() as u8;
                 let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     size as u32,
+                    align_shift,
                 ));
                 let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
                 super::storage::store_to_memory(ctx, *val, addr, 0);
@@ -222,7 +226,7 @@ pub fn lower<M: Module>(
             let len_val = ctx
                 .builder
                 .ins()
-                .load(types::I64, MemFlags::new(), str_ptr, 8);
+                .load(types::I64, MemFlagsData::new(), str_ptr, 8);
             ctx.values.insert(*dest, len_val);
         }
         InstructionKind::StrConcat(dest, lhs, rhs) => {
@@ -325,7 +329,7 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, addr);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), addr, 0);
+                let res = ctx.builder.ins().load(cl_ty, MemFlagsData::new(), addr, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -337,9 +341,12 @@ pub fn lower<M: Module>(
                 get_val(&ctx.values, val)
             } else {
                 let size = val_ty.size(&ctx.ssa_func.struct_layouts);
+                let align = val_ty.align(&ctx.ssa_func.struct_layouts);
+                let align_shift = align.trailing_zeros() as u8;
                 let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     size as u32,
+                    align_shift,
                 ));
                 let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
                 super::storage::store_to_memory(ctx, *val, addr, 0);
@@ -379,7 +386,7 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, addr);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), addr, 0);
+                let res = ctx.builder.ins().load(cl_ty, MemFlagsData::new(), addr, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -429,7 +436,7 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, addr);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), addr, 0);
+                let res = ctx.builder.ins().load(cl_ty, MemFlagsData::new(), addr, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -470,7 +477,7 @@ pub fn lower<M: Module>(
                 };
                 ctx.builder
                     .ins()
-                    .store(MemFlags::new(), val_to_store, addr, 0);
+                    .store(MemFlagsData::new(), val_to_store, addr, 0);
             }
 
             ctx.values.insert(*dest, tensor_ptr);
@@ -504,6 +511,7 @@ pub fn lower<M: Module>(
             let src_dims_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 (src_rank * 8) as u32,
+                3,
             ));
             for (i, &dim) in src_dims.iter().enumerate() {
                 ctx.builder
@@ -515,6 +523,7 @@ pub fn lower<M: Module>(
             let target_dims_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 (target_rank * 8) as u32,
+                3,
             ));
             for (i, &dim) in target_dim_vals.iter().enumerate() {
                 ctx.builder
@@ -594,7 +603,9 @@ pub fn lower<M: Module>(
             ctx.builder.append_block_param(loop_header, types::I64);
 
             let zero = ctx.builder.ins().iconst(types::I64, 0);
-            ctx.builder.ins().jump(loop_header, &[zero]);
+            ctx.builder
+                .ins()
+                .jump(loop_header, &[BlockArg::Value(zero)]);
 
             ctx.builder.switch_to_block(loop_header);
             let idx = ctx.builder.block_params(loop_header)[0];
@@ -610,11 +621,15 @@ pub fn lower<M: Module>(
             let res_val = eval_fused_expr(&mut ctx.builder, &ctx.values, idx, expr);
             let offset = ctx.builder.ins().imul_imm(idx, 4);
             let addr = ctx.builder.ins().iadd(dest_ptr, offset);
-            ctx.builder.ins().store(MemFlags::new(), res_val, addr, 0);
+            ctx.builder
+                .ins()
+                .store(MemFlagsData::new(), res_val, addr, 0);
 
             let one = ctx.builder.ins().iconst(types::I64, 1);
             let next_idx = ctx.builder.ins().iadd(idx, one);
-            ctx.builder.ins().jump(loop_header, &[next_idx]);
+            ctx.builder
+                .ins()
+                .jump(loop_header, &[BlockArg::Value(next_idx)]);
 
             ctx.builder.switch_to_block(loop_exit);
 
@@ -666,7 +681,7 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, addr);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), addr, 0);
+                let res = ctx.builder.ins().load(cl_ty, MemFlagsData::new(), addr, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -725,9 +740,12 @@ pub fn lower<M: Module>(
             }
 
             let size = dest_ty.size(&ctx.ssa_func.struct_layouts);
+            let align = dest_ty.align(&ctx.ssa_func.struct_layouts);
+            let align_shift = align.trailing_zeros() as u8;
             let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 size as u32,
+                align_shift,
             ));
 
             let fields = ctx
@@ -790,10 +808,10 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, res);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx
-                    .builder
-                    .ins()
-                    .load(cl_ty, MemFlags::new(), obj_ptr, *offset as i32);
+                let res =
+                    ctx.builder
+                        .ins()
+                        .load(cl_ty, MemFlagsData::new(), obj_ptr, *offset as i32);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -841,9 +859,9 @@ pub fn lower<M: Module>(
         }
         InstructionKind::EnumCreate(dest, enum_name, tag_idx, payload) => {
             let mut size = 0;
+            let mut max_align = 1;
             if let Some(variants) = ctx.ssa_func.enum_layouts.get(enum_name) {
                 let mut max_payload_size = 0;
-                let mut max_align = 1;
                 for (_, f_ty) in variants {
                     let sz = f_ty.size(&ctx.ssa_func.struct_layouts);
                     if sz > max_payload_size {
@@ -860,9 +878,11 @@ pub fn lower<M: Module>(
                 size = (offset + max_align - 1) & !(max_align - 1);
             }
 
+            let align_shift = max_align.trailing_zeros() as u8;
             let slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 size as u32,
+                align_shift,
             ));
 
             let tag_val = ctx.builder.ins().iconst(types::I8, *tag_idx as i64);
@@ -893,7 +913,7 @@ pub fn lower<M: Module>(
             let tag_val = ctx
                 .builder
                 .ins()
-                .load(types::I8, MemFlags::new(), obj_ptr, 0);
+                .load(types::I8, MemFlagsData::new(), obj_ptr, 0);
             let expected_tag = ctx.builder.ins().iconst(types::I8, *tag_idx as i64);
             let is_match =
                 ctx.builder
@@ -910,7 +930,7 @@ pub fn lower<M: Module>(
             let tag_val = ctx
                 .builder
                 .ins()
-                .load(types::I8, MemFlags::new(), obj_ptr, 0);
+                .load(types::I8, MemFlagsData::new(), obj_ptr, 0);
             ctx.values.insert(*dest, tag_val);
         }
         InstructionKind::EnumExtract(dest, obj, tag_idx) => {
@@ -942,7 +962,7 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, addr);
             } else {
                 let cl_ty = translate_type(payload_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), addr, 0);
+                let res = ctx.builder.ins().load(cl_ty, MemFlagsData::new(), addr, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -971,7 +991,10 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, ptr_val);
             } else {
                 let cl_ty = translate_type(&dest_ty);
-                let res = ctx.builder.ins().load(cl_ty, MemFlags::new(), ptr_val, 0);
+                let res = ctx
+                    .builder
+                    .ins()
+                    .load(cl_ty, MemFlagsData::new(), ptr_val, 0);
                 ctx.values.insert(*dest, res);
             }
         }
@@ -1000,7 +1023,7 @@ fn eval_fused_expr(
             let t_ptr = values.get(val).copied().unwrap();
             let offset = builder.ins().imul_imm(idx, 4);
             let addr = builder.ins().iadd(t_ptr, offset);
-            builder.ins().load(types::F32, MemFlags::new(), addr, 0)
+            builder.ins().load(types::F32, MemFlagsData::new(), addr, 0)
         }
         lirien_ir::ir::FusedExpr::Scalar(val) => values.get(val).copied().unwrap(),
         lirien_ir::ir::FusedExpr::Add(l, r) => {

@@ -41,7 +41,7 @@ fn lower_instruction_internal<M: Module>(
     current_ssa_block: SsaBlockId,
 ) -> Result<(), LoweringError> {
     match &inst.kind {
-        InstructionKind::Phi(_, _) => Ok(()), // Handled in Pass 1
+        InstructionKind::Phi(_, _) => Ok(()),
 
         InstructionKind::ConstInt(dest, val) => {
             let ty = ctx.ssa_func.get_type(*dest);
@@ -275,7 +275,11 @@ fn lower_instruction_internal<M: Module>(
             ctx.tensor_dims.insert(*dest, vec![m, k]);
             Ok(())
         }
-        InstructionKind::Assert(_, _) => Ok(()),
+        InstructionKind::Assert(test, _) => {
+            let cond_val = get_val(&ctx.values, test);
+            ctx.builder.ins().trapz(cond_val, TrapCode::unwrap_user(1));
+            Ok(())
+        }
         InstructionKind::Nop() => Ok(()),
     }
 }

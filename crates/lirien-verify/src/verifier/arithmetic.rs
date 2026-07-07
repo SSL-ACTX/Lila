@@ -482,8 +482,22 @@ pub fn translate<
                     ctx.backend.float_from_f64(0.0)
                 };
 
+                let is_vector = matches!(
+                    ty,
+                    Type::F32X4
+                        | Type::F64X2
+                        | Type::I32X4
+                        | Type::I64X2
+                        | Type::I8X16
+                        | Type::U8X16
+                        | Type::I16X8
+                        | Type::U16X8
+                );
+
                 // Optimization: Use interval analysis to skip Z3 check if possible
-                let is_safe = if let Some(interval) = ctx.analysis.intervals.get(rhs) {
+                let is_safe = if is_vector {
+                    true
+                } else if let Some(interval) = ctx.analysis.intervals.get(rhs) {
                     interval.is_strictly_positive() || interval.is_strictly_negative()
                 } else {
                     false
@@ -820,15 +834,27 @@ pub fn translate<
                     | InstructionKind::FAsin(_, _)
                     | InstructionKind::FAcos(_, _)
                     | InstructionKind::FAtan(_, _)
-                    | InstructionKind::FExp(_, _)
                     | InstructionKind::FLog(_, _)
                     | InstructionKind::FLog10(_, _)
                     | InstructionKind::FFloor(_, _)
                     | InstructionKind::FCeil(_, _)
                     | InstructionKind::FTrunc(_, _)
                     | InstructionKind::FNearest(_, _) => {}
+                    InstructionKind::FExp(_, _) => {
+                        if let Some(z3_dest) = ctx.z3_floats.get(dest) {
+                            let ty = ctx.func.get_type(*dest);
+                            let zero = if ty.is_float32() {
+                                ctx.backend.float_from_f32(0.0)
+                            } else {
+                                ctx.backend.float_from_f64(0.0)
+                            };
+                            let gt_zero = ctx.backend.float_gt(z3_dest, &zero);
+                            let __tmp = ctx.backend.bool_implies(path_cond, &gt_zero);
+                            ctx.backend.assert(&__tmp);
+                        }
+                    }
                     InstructionKind::FSqrt(_, _) => {
-                        if let Some(z3_src) = ctx.z3_floats.get(s_val) {
+                        if let Some(z3_src) = ctx.z3_floats.get(s_val).cloned() {
                             let ty = ctx.func.get_type(*s_val);
                             let zero = if ty.is_float32() {
                                 ctx.backend.float_from_f32(0.0)
@@ -845,13 +871,22 @@ pub fn translate<
                             };
 
                             if !is_safe {
-                                let __tmp = ctx.backend.float_lt(z3_src, &zero);
+                                let __tmp = ctx.backend.float_lt(&z3_src, &zero);
                                 ctx.check_safety(
                                     path_cond,
                                     &__tmp,
                                     format!("Potential sqrt of negative number at v{}", dest.0),
                                     inst.location,
                                 )?;
+                            }
+
+                            // Axiom: If src > 0, then dest > 0
+                            if let Some(z3_dest) = ctx.z3_floats.get(dest) {
+                                let src_gt_zero = ctx.backend.float_gt(&z3_src, &zero);
+                                let dest_gt_zero = ctx.backend.float_gt(z3_dest, &zero);
+                                let axiom = ctx.backend.bool_implies(&src_gt_zero, &dest_gt_zero);
+                                let __tmp = ctx.backend.bool_implies(path_cond, &axiom);
+                                ctx.backend.assert(&__tmp);
                             }
                         }
                     }

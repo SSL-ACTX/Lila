@@ -94,7 +94,22 @@ Lirien is an experimental research compiler. It is under active development and 
   - [ ] Auto-Vectorization (SIMD)
   - [ ] Bounded Loop Unrolling & Peeling
 - [ ] Verification & SMT Enhancements
-  - [ ] Counterexample-Guided Debugging (SMT model extraction)
+  - [x] Counterexample-Guided Debugging (SMT model extraction)
+- [ ] Numerical Library (num) Expansions
+  - [x] Modern DL Activations:
+    - [x] GELU
+    - [x] SwiGLU
+  - [x] Normalization Layers:
+    - [x] SIMD-accelerated RMSNorm
+    - [x] SIMD-accelerated LayerNorm
+  - [x] Generic Vision Operators:
+    - [x] Generic Max Pooling (`max_pool2d`)
+    - [x] Generic Average Pooling (`avg_pool2d`)
+    - [x] Padded & Strided 2D Convolution (`convolve2d_padded`)
+    - [x] Nearest-Neighbor Rescaling (`resize_nearest`)
+  - [x] In-place Optimization Steps (SGD with Momentum, AdamW)
+  - [x] Numerically Stable Loss Functions (Softmax Cross-Entropy with Log-Sum-Exp)
+  - [x] Batched & SIMD Operations (Batch Matrix Multiplication - BMM, SIMD RMSNorm/LayerNorm)
 
 ---
 

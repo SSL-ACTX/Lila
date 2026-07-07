@@ -1,5 +1,5 @@
 use super::CodegenContext;
-use cranelift::codegen::ir::StackSlot;
+use cranelift::codegen::ir::{MemFlagsData, StackSlot};
 use cranelift::prelude::*;
 use cranelift_module::Module;
 
@@ -19,10 +19,10 @@ pub fn copy_memory(builder: &mut FunctionBuilder, src_ptr: Value, dest_ptr: Valu
 
         let val = builder
             .ins()
-            .load(cl_ty, MemFlags::new(), src_ptr, curr_offset as i32);
+            .load(cl_ty, MemFlagsData::new(), src_ptr, curr_offset as i32);
         builder
             .ins()
-            .store(MemFlags::new(), val, dest_ptr, curr_offset as i32);
+            .store(MemFlagsData::new(), val, dest_ptr, curr_offset as i32);
         curr_offset += chunk_size;
     }
 }
@@ -49,7 +49,7 @@ pub fn copy_to_stack(
 
         let val = builder
             .ins()
-            .load(cl_ty, MemFlags::new(), src_ptr, curr_offset as i32);
+            .load(cl_ty, MemFlagsData::new(), src_ptr, curr_offset as i32);
         builder
             .ins()
             .stack_store(val, slot, slot_offset + curr_offset as i32);
@@ -69,7 +69,9 @@ impl StorageDest {
                 ctx.builder.ins().stack_store(val, *slot, offset);
             }
             StorageDest::Addr(ptr) => {
-                ctx.builder.ins().store(MemFlags::new(), val, *ptr, offset);
+                ctx.builder
+                    .ins()
+                    .store(MemFlagsData::new(), val, *ptr, offset);
             }
         }
     }
