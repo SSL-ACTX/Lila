@@ -841,8 +841,22 @@ macro_rules! lirien_instructions {
                 side_effects: false,
                 category: Memory
             },
+            PointerLoadOffset(dest: Value, ptr: Value, offset: i32) {
+                display: "{} = pload *{} + {}",
+                def: Some(*dest),
+                uses: [*ptr],
+                side_effects: false,
+                category: Memory
+            },
             PointerStore(ptr: Value, val: Value) {
                 display: "pstore *{} = {}",
+                def: None,
+                uses: [*ptr, *val],
+                side_effects: true,
+                category: Memory
+            },
+            PointerStoreOffset(ptr: Value, offset: i32, val: Value) {
+                display: "pstore *{} + {} = {}",
                 def: None,
                 uses: [*ptr, *val],
                 side_effects: true,

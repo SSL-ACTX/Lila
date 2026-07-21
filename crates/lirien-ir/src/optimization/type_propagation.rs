@@ -475,7 +475,8 @@ pub fn propagate_types(func: &mut Function) {
                             new_types.insert(*d, Type::Pointer(Box::new(t.clone())));
                         }
                     }
-                    InstructionKind::PointerLoad(d, p) => {
+                    InstructionKind::PointerLoad(d, p)
+                    | InstructionKind::PointerLoadOffset(d, p, _) => {
                         let current_ty = func.get_type(*d);
                         if current_ty == Type::Unknown {
                             let p_ty = func.get_type(*p);

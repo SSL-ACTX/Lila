@@ -211,7 +211,9 @@ fn lower_instruction_internal<M: Module>(
         | InstructionKind::EnumExtract(_, _, _)
         | InstructionKind::Alloc(_, _)
         | InstructionKind::PointerLoad(_, _)
+        | InstructionKind::PointerLoadOffset(_, _, _)
         | InstructionKind::PointerStore(_, _)
+        | InstructionKind::PointerStoreOffset(_, _, _)
         | InstructionKind::TensorFused(_, _, _) => memory::lower(ctx, &inst.kind),
 
         InstructionKind::TupleCreate(_, _) | InstructionKind::TupleExtract(_, _, _) => {

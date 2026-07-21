@@ -12,9 +12,27 @@ impl CFGBuilder {
     ) -> BuilderResult<()> {
         match target {
             ast::Expr::Name(name) => {
-                self.write_variable(name.id.to_string(), self.current_block, value);
+                let name_str = name.id.to_string();
+                if let Some(ref mut ctx) = self.clif_context {
+                    ctx.registers.insert(name_str, value);
+                } else {
+                    self.write_variable(name_str, self.current_block, value);
+                }
             }
             ast::Expr::Subscript(sub) => {
+                if self.clif_context.is_some() {
+                    let ptr = self.visit_expr(*sub.value.clone())?;
+                    let val = self.auto_load(value);
+                    let offset = match &*sub.slice {
+                        ast::Expr::Constant(c) => match &c.value {
+                            ast::Constant::Int(i) => i.to_string().parse::<i32>().unwrap_or(0),
+                            _ => 0,
+                        },
+                        _ => 0,
+                    };
+                    push_inst!(self, InstructionKind::PointerStoreOffset(ptr, offset, val));
+                    return Ok(());
+                }
                 let arr = self.visit_expr(*sub.value.clone())?;
                 let arr_ty = self.func.get_type(arr);
                 let dest_arr = self.func.next_value();

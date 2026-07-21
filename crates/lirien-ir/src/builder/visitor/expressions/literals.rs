@@ -60,6 +60,12 @@ impl CFGBuilder {
     }
 
     pub(crate) fn visit_name(&mut self, n: ast::ExprName) -> BuilderResult<Value> {
+        if let Some(ref ctx) = self.clif_context {
+            let name_str = n.id.to_string();
+            if let Some(&val) = ctx.registers.get(&name_str) {
+                return Ok(val);
+            }
+        }
         self.read_variable(n.id.to_string(), self.current_block)
     }
 }

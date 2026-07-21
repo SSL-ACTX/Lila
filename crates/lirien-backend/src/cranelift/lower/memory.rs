@@ -998,9 +998,29 @@ pub fn lower<M: Module>(
                 ctx.values.insert(*dest, res);
             }
         }
+        InstructionKind::PointerLoadOffset(dest, ptr, offset) => {
+            let ptr_val = get_val(&ctx.values, ptr);
+            let dest_ty = ctx.ssa_func.get_type(*dest);
+            if dest_ty.is_composite() {
+                // For a composite structure at offset, add the offset to the base pointer
+                let res = ctx.builder.ins().iadd_imm(ptr_val, *offset as i64);
+                ctx.values.insert(*dest, res);
+            } else {
+                let cl_ty = translate_type(&dest_ty);
+                let res = ctx
+                    .builder
+                    .ins()
+                    .load(cl_ty, MemFlagsData::new(), ptr_val, *offset);
+                ctx.values.insert(*dest, res);
+            }
+        }
         InstructionKind::PointerStore(ptr, val) => {
             let ptr_val = get_val(&ctx.values, ptr);
             super::store_to_memory(ctx, *val, ptr_val, 0);
+        }
+        InstructionKind::PointerStoreOffset(ptr, offset, val) => {
+            let ptr_val = get_val(&ctx.values, ptr);
+            super::store_to_memory(ctx, *val, ptr_val, *offset);
         }
         _ => {
             return Err(LoweringError::InstructionNotSupported(

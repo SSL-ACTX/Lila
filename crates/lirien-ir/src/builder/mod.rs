@@ -21,8 +21,17 @@ use rustpython_ast as ast;
 use rustpython_parser::Parse;
 use std::collections::{HashMap, HashSet};
 
+/// Context information active when processing a `with clif:` block.
+#[derive(Debug, Clone)]
+pub struct ClifContext {
+    pub registers: HashMap<String, Value>,
+    pub outputs: HashMap<String, String>,
+}
+
 /// Core builder for constructing the Control Flow Graph in Static Single Assignment form.
 pub struct CFGBuilder {
+    /// Active CLIF compilation context if inside a `with clif:` block.
+    pub clif_context: Option<ClifContext>,
     /// The function IR being built.
     pub func: Function,
     /// The current basic block index.
@@ -283,6 +292,7 @@ impl CFGBuilder {
         }
 
         let mut builder = Self {
+            clif_context: None,
             func: Function {
                 struct_layouts,
                 enum_layouts,
@@ -522,6 +532,7 @@ impl CFGBuilder {
 
     pub fn new_sub_builder(&self, name: String) -> Self {
         let mut builder = Self {
+            clif_context: None,
             func: Function {
                 struct_layouts: self.func.struct_layouts.clone(),
                 enum_layouts: self.func.enum_layouts.clone(),

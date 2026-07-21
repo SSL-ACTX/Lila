@@ -922,6 +922,46 @@ pub fn translate<
                 }
             }
         }
+        InstructionKind::PointerLoadOffset(dest, ptr, offset) => {
+            // Null check
+            let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
+            let zero = ctx.backend.bv_from_i64(0, 64);
+            let is_null = ctx.backend.bv_eq(&ptr_val, &zero);
+            ctx.check_safety(
+                path_cond,
+                &is_null,
+                format!("Potential null pointer dereference at v{}", ptr.0),
+                inst.location,
+            )?;
+
+            let ptr_payload = ctx.z3_arrays.get(ptr).cloned().unwrap();
+            let dest_ty = ctx.func.get_type(*dest);
+            if dest_ty.is_composite() {
+                let dest_payload = ctx.z3_arrays.get(dest).cloned().unwrap();
+                let __inner = ctx.backend.array_eq(&dest_payload, &ptr_payload);
+                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                ctx.backend.assert(&__tmp);
+            } else {
+                // Primitive load
+                let offset_idx = ctx.backend.int_from_i64(*offset as i64);
+                if let Some(dest_bv) = ctx.z3_bvs.get(dest).cloned() {
+                    let res = ctx.backend.array_select_bv(&ptr_payload, &offset_idx);
+                    let __inner = ctx.backend.bv_eq(&dest_bv, &res);
+                    let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                    ctx.backend.assert(&__tmp);
+                } else if let Some(dest_float) = ctx.z3_floats.get(dest).cloned() {
+                    let dest_ty = ctx.func.get_type(*dest);
+                    let res = ctx.backend.array_select_float(
+                        &ptr_payload,
+                        &offset_idx,
+                        matches!(dest_ty, Type::F32),
+                    );
+                    let __inner = ctx.backend.float_eq(&dest_float, &res);
+                    let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                    ctx.backend.assert(&__tmp);
+                }
+            }
+        }
         InstructionKind::PointerStore(ptr, val) => {
             // Null check
             let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
@@ -953,6 +993,45 @@ pub fn translate<
                     let new_payload = ctx.backend.array_store_float(
                         &ptr_payload,
                         &zero_idx,
+                        &val_float,
+                        matches!(val_ty, Type::F32),
+                    );
+                    ctx.z3_arrays.insert(*ptr, new_payload);
+                }
+            }
+        }
+        InstructionKind::PointerStoreOffset(ptr, offset, val) => {
+            // Null check
+            let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
+            let zero = ctx.backend.bv_from_i64(0, 64);
+            let is_null = ctx.backend.bv_eq(&ptr_val, &zero);
+            ctx.check_safety(
+                path_cond,
+                &is_null,
+                format!("Potential null pointer dereference (store) at v{}", ptr.0),
+                inst.location,
+            )?;
+
+            let ptr_payload = ctx.z3_arrays.get(ptr).cloned().unwrap();
+            let val_ty = ctx.func.get_type(*val);
+            if val_ty.is_composite() {
+                let val_payload = ctx.z3_arrays.get(val).cloned().unwrap();
+                let __inner = ctx.backend.array_eq(&ptr_payload, &val_payload);
+                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                ctx.backend.assert(&__tmp);
+            } else {
+                // Primitive store
+                let offset_idx = ctx.backend.int_from_i64(*offset as i64);
+                if let Some(val_bv) = ctx.z3_bvs.get(val).cloned() {
+                    let new_payload =
+                        ctx.backend
+                            .array_store_bv(&ptr_payload, &offset_idx, &val_bv);
+                    // We need to update the ptr_payload mapping.
+                    ctx.z3_arrays.insert(*ptr, new_payload);
+                } else if let Some(val_float) = ctx.z3_floats.get(val).cloned() {
+                    let new_payload = ctx.backend.array_store_float(
+                        &ptr_payload,
+                        &offset_idx,
                         &val_float,
                         matches!(val_ty, Type::F32),
                     );

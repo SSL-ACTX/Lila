@@ -436,7 +436,9 @@ fn translate_instructions<
                 | InstructionKind::EnumExtract(..)
                 | InstructionKind::Alloc(..)
                 | InstructionKind::PointerLoad(..)
-                | InstructionKind::PointerStore(..) => {
+                | InstructionKind::PointerLoadOffset(..)
+                | InstructionKind::PointerStore(..)
+                | InstructionKind::PointerStoreOffset(..) => {
                     memory::translate(t_ctx, inst, &path_cond)?;
                 }
                 InstructionKind::TupleCreate(..) | InstructionKind::TupleExtract(..) => {

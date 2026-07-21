@@ -737,8 +737,22 @@ impl fmt::Display for Instruction {
             InstructionKind::PointerLoad(d, p) => {
                 write!(f, "  {} = pload *{}{}{}", d, p, loc_str, constraints_str)
             }
+            InstructionKind::PointerLoadOffset(d, p, offset) => {
+                write!(
+                    f,
+                    "  {} = pload *{} + {}{}{}",
+                    d, p, offset, loc_str, constraints_str
+                )
+            }
             InstructionKind::PointerStore(p, v) => {
                 write!(f, "  pstore *{} = {}{}{}", p, v, loc_str, constraints_str)
+            }
+            InstructionKind::PointerStoreOffset(p, offset, v) => {
+                write!(
+                    f,
+                    "  pstore *{} + {} = {}{}{}",
+                    p, offset, v, loc_str, constraints_str
+                )
             }
             InstructionKind::Lambda(d, name, args) => {
                 let caps: Vec<String> = args.iter().map(|v| v.to_string()).collect();
