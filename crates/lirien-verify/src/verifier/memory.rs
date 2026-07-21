@@ -34,13 +34,13 @@ pub fn init_values<
                     inner_ty = *inner;
                     break;
                 }
-                Type::Pointer(_) | Type::Struct(_) | Type::TypedDict(_) | Type::Optional(_) => {
+                Type::Pointer(_) | Type::Struct(_) | Type::TypedDict(_) => {
                     is_mem_obj = true;
                     is_non_nullable = true;
                     inner_ty = Type::I64;
                     break;
                 }
-                Type::Tuple(_) | Type::NullablePointer(_) => {
+                Type::Tuple(_) | Type::NullablePointer(_) | Type::Optional(_) => {
                     is_mem_obj = true;
                     is_non_nullable = false;
                     inner_ty = Type::I64;

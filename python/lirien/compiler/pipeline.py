@@ -83,10 +83,20 @@ def _needs_monomorphization(ann):
     if isinstance(ann, (TypeVar, TypeVarTuple)) or hasattr(ann, "__lirien_typevar__"):
         return True
 
+    if _has_ellipsis(ann) or _has_protocol(ann) or _has_callable(ann):
+        return True
+
+    if isinstance(ann, type):
+        return False
+
+    if getattr(ann, "__lirien_specialized__", False):
+        return True
+
+    if hasattr(ann, "__parameters__") and ann.__parameters__:
+        return True
+
     origin = get_origin(ann)
     if origin is not None:
-        if hasattr(origin, "__parameters__") and origin.__parameters__:
-            return True
         for arg in get_args(ann):
             if _needs_monomorphization(arg):
                 return True
@@ -95,11 +105,5 @@ def _needs_monomorphization(ann):
         for arg in ann:
             if _needs_monomorphization(arg):
                 return True
-
-    if getattr(ann, "__lirien_specialized__", False):
-        return True
-
-    if _has_ellipsis(ann) or _has_protocol(ann) or _has_callable(ann):
-        return True
 
     return False
