@@ -119,6 +119,11 @@ def _is_box_type(ann: Any) -> bool:
 def _get_type_name(ty: Any, type_mapping: dict[str, Any] = None) -> str:
     """Consistently convert a Python-side type to its Lirien IR string representation."""
     if getattr(ty, "__lirien_specialized__", False):
+        origin = getattr(ty, "__lirien_origin__", None)
+        if origin and type_mapping and origin.__name__ in type_mapping:
+            specialized = type_mapping[origin.__name__]
+            if getattr(specialized, "__lirien_specialized__", False):
+                return specialized.__name__
         return ty.__name__
 
     # Handle typing.NewType
@@ -406,11 +411,19 @@ def _discover_types(
             obj.__lirien_ctypes__ = TypedDictStruct
             obj.__lirien_typed_dict__ = True
         elif getattr(obj, "__lirien_struct__", False) and name not in struct_layouts:
+            from .pipeline import _needs_monomorphization
+
+            if _needs_monomorphization(obj):
+                continue
             struct_layouts[name] = [
                 (f_name, _get_type_name(f_ty, type_mapping))
                 for f_name, f_ty in obj.__lirien_fields__
             ]
         elif getattr(obj, "__lirien_enum__", False) and name not in enum_layouts:
+            from .pipeline import _needs_monomorphization
+
+            if _needs_monomorphization(obj):
+                continue
             layout = []
             variants = getattr(obj, "__lirien_variant_types__", {})
             for v_name, v_ty in variants.items():
@@ -566,6 +579,12 @@ def _find_typevars(ann: Any, found: set = None) -> set:
     if isinstance(ann, (TypeVar, TypeVarTuple)) or hasattr(ann, "__lirien_typevar__"):
         found.add(ann)
         return found
+
+    if getattr(ann, "__lirien_specialized__", False):
+        params = getattr(ann, "__lirien_params__", None)
+        if params:
+            for param in params:
+                _find_typevars(param, found)
 
     if isinstance(ann, TypeExpr):
         for arg in ann.args:

@@ -86,11 +86,15 @@ def _needs_monomorphization(ann):
     if _has_ellipsis(ann) or _has_protocol(ann) or _has_callable(ann):
         return True
 
+    if getattr(ann, "__lirien_specialized__", False):
+        params = getattr(ann, "__lirien_params__", None)
+        if params:
+            for param in params:
+                if _needs_monomorphization(param):
+                    return True
+
     if isinstance(ann, type):
         return False
-
-    if getattr(ann, "__lirien_specialized__", False):
-        return True
 
     if hasattr(ann, "__parameters__") and ann.__parameters__:
         return True
