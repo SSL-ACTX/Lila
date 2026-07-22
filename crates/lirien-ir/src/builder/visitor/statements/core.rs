@@ -135,6 +135,29 @@ impl CFGBuilder {
 
             if let Some(ast::Expr::Dict(dict)) = inputs_expr {
                 for (k_opt, v_expr) in dict.keys.iter().zip(dict.values.iter()) {
+                    // Try pattern 1: key is string constant ("v0"), value is variable name (a)
+                    if let Some(ast::Expr::Constant(ref c)) = k_opt {
+                        if let ast::Constant::Str(ref reg_name) = c.value {
+                            if let ast::Expr::Name(ref var_name) = v_expr {
+                                let val = self
+                                    .read_variable(var_name.id.to_string(), self.current_block)?;
+                                registers.insert(reg_name.to_string(), val);
+                                continue;
+                            }
+                        }
+                    }
+                    // Try pattern 2: key is variable name (a), value is string constant ("v0")
+                    if let Some(ast::Expr::Name(ref var_name)) = k_opt {
+                        let val =
+                            self.read_variable(var_name.id.to_string(), self.current_block)?;
+                        if let ast::Expr::Constant(ref c) = v_expr {
+                            if let ast::Constant::Str(ref reg_name) = c.value {
+                                registers.insert(reg_name.to_string(), val);
+                                continue;
+                            }
+                        }
+                    }
+                    // Try pattern 3: the existing format (key is variable name, value is register variable name)
                     if let Some(ast::Expr::Name(k_name)) = k_opt {
                         let val = self.read_variable(k_name.id.to_string(), self.current_block)?;
                         if let ast::Expr::Name(v_name) = v_expr {
@@ -146,6 +169,18 @@ impl CFGBuilder {
 
             if let Some(ast::Expr::Dict(dict)) = outputs_expr {
                 for (k_opt, v_expr) in dict.keys.iter().zip(dict.values.iter()) {
+                    // Try pattern 1: key is string register ("v3"), value is string variable ("res")
+                    if let Some(ast::Expr::Constant(ref c1)) = k_opt {
+                        if let ast::Constant::Str(ref reg_name) = c1.value {
+                            if let ast::Expr::Constant(ref c2) = v_expr {
+                                if let ast::Constant::Str(ref var_name) = c2.value {
+                                    outputs.insert(reg_name.to_string(), var_name.to_string());
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    // Try pattern 2: key is register name (v3), value is string target variable name ("res")
                     if let Some(ast::Expr::Name(k_name)) = k_opt {
                         if let ast::Expr::Constant(ref c) = v_expr {
                             if let ast::Constant::Str(ref s) = c.value {

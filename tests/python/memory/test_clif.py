@@ -68,6 +68,13 @@ def clif_dot_product_4d(a: Box[i64], b: Box[i64]) -> i64:
     return res
 
 
+@verify
+def clif_string_syntax(a: i64, b: i64) -> i64:
+    with clif(inputs={"v0": a, "v1": b}, outputs={"v2": "res"}):
+        v2 = v0 * v1
+    return res
+
+
 class TestClifBlocks(unittest.TestCase):
     def test_clif_basic(self):
         res = clif_kernel(10, 2)
@@ -99,6 +106,10 @@ class TestClifBlocks(unittest.TestCase):
         res = clif_dot_product_4d(a, b)
         # 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70
         self.assertEqual(res, 70)
+
+    def test_clif_string_syntax(self):
+        res = clif_string_syntax(7, 8)
+        self.assertEqual(res, 56)
 
 
 if __name__ == "__main__":
