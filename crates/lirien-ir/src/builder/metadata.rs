@@ -4,6 +4,29 @@ use rustpython_ast as ast;
 use rustpython_parser::Parse;
 use std::collections::{HashMap, HashSet};
 
+fn get_type_param_name(t: &Type) -> String {
+    match t {
+        Type::I8 => "i8".to_string(),
+        Type::U8 => "u8".to_string(),
+        Type::I16 => "i16".to_string(),
+        Type::U16 => "u16".to_string(),
+        Type::I32 => "i32".to_string(),
+        Type::U32 => "u32".to_string(),
+        Type::I64 => "i64".to_string(),
+        Type::U64 => "u64".to_string(),
+        Type::F32 => "f32".to_string(),
+        Type::F64 => "f64".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::Str => "str".to_string(),
+        Type::Struct(name) => name.clone(),
+        Type::Enum(name) => name.clone(),
+        Type::NamedTuple(name) => name.clone(),
+        Type::TypedDict(name) => name.clone(),
+        Type::Pointer(inner) => get_type_param_name(inner),
+        _ => t.to_string(),
+    }
+}
+
 pub fn parse_type(
     expr: &ast::Expr,
     aliases: &HashMap<String, String>,
@@ -113,6 +136,53 @@ pub fn parse_type(
             } else {
                 base_str
             };
+
+            let mut arg_names = Vec::new();
+            let mut args_parsed_successfully = true;
+            match &*s.slice {
+                ast::Expr::Tuple(t) => {
+                    for elt in &t.elts {
+                        if let Ok(ty) = parse_type(
+                            elt,
+                            aliases,
+                            named_tuple_names,
+                            typed_dict_names,
+                            enum_names,
+                        ) {
+                            arg_names.push(get_type_param_name(&ty));
+                        } else {
+                            args_parsed_successfully = false;
+                            break;
+                        }
+                    }
+                }
+                other => {
+                    if let Ok(ty) = parse_type(
+                        other,
+                        aliases,
+                        named_tuple_names,
+                        typed_dict_names,
+                        enum_names,
+                    ) {
+                        arg_names.push(get_type_param_name(&ty));
+                    } else {
+                        args_parsed_successfully = false;
+                    }
+                }
+            }
+
+            if args_parsed_successfully {
+                let specialized_name = format!("{}_{}", base, arg_names.join("_"));
+                if enum_names.contains(&specialized_name) {
+                    return Ok(Type::Enum(specialized_name));
+                }
+                if named_tuple_names.contains(&specialized_name) {
+                    return Ok(Type::NamedTuple(specialized_name));
+                }
+                if typed_dict_names.contains(&specialized_name) {
+                    return Ok(Type::TypedDict(specialized_name));
+                }
+            }
 
             match base.to_lowercase().as_str() {
                 "array" => {
@@ -498,14 +568,48 @@ pub fn parse_type(
                         None,
                     ))
                 }
-                _ => Err(BuilderError::General(
-                    format!(
-                        "Unsupported generic type: '{}' (lowered: '{}')",
-                        base,
-                        base.to_lowercase()
-                    ),
-                    None,
-                )),
+                _ => {
+                    let mut arg_names = Vec::new();
+                    match &*s.slice {
+                        ast::Expr::Tuple(t) => {
+                            for elt in &t.elts {
+                                let ty = parse_type(
+                                    elt,
+                                    aliases,
+                                    named_tuple_names,
+                                    typed_dict_names,
+                                    enum_names,
+                                )?;
+                                arg_names.push(get_type_param_name(&ty));
+                            }
+                        }
+                        other => {
+                            let ty = parse_type(
+                                other,
+                                aliases,
+                                named_tuple_names,
+                                typed_dict_names,
+                                enum_names,
+                            )?;
+                            arg_names.push(get_type_param_name(&ty));
+                        }
+                    }
+                    let specialized_name = format!("{}_{}", base, arg_names.join("_"));
+
+                    if named_tuple_names.contains(base)
+                        || named_tuple_names.contains(&specialized_name)
+                    {
+                        Ok(Type::NamedTuple(specialized_name))
+                    } else if typed_dict_names.contains(base)
+                        || typed_dict_names.contains(&specialized_name)
+                    {
+                        Ok(Type::TypedDict(specialized_name))
+                    } else if enum_names.contains(base) || enum_names.contains(&specialized_name) {
+                        Ok(Type::Enum(specialized_name))
+                    } else {
+                        Ok(Type::Struct(specialized_name))
+                    }
+                }
             }
         }
         ast::Expr::Constant(c) => {

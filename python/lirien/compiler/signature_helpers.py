@@ -263,13 +263,8 @@ def _get_type_name(ty: Any, type_mapping: dict[str, Any] = None) -> str:
             return _get_type_name(args[0], type_mapping)
 
     # Handle Union types (including Optional)
-    if (
-        origin is Union
-        or (
-            hasattr(sys.modules.get("typing"), "_UnionGenericAlias")
-            and isinstance(ty, sys.modules.get("typing")._UnionGenericAlias)
-        )
-        or (sys.version_info >= (3, 10) and origin is types.UnionType)
+    if origin is Union or (
+        sys.version_info >= (3, 10) and origin is getattr(types, "UnionType", None)
     ):
         args = get_args(ty)
         has_none = any(arg is type(None) or arg is None for arg in args)
