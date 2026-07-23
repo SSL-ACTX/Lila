@@ -98,6 +98,24 @@ impl CFGBuilder {
         let arr_ty = self.func.get_type(arr);
         let dest = self.func.next_value();
 
+        if self.clif_context.is_some() {
+            let offset = match &*s.slice {
+                ast::Expr::Constant(c) => match &c.value {
+                    ast::Constant::Int(i) => i.to_string().parse::<i32>().unwrap_or(0),
+                    _ => 0,
+                },
+                _ => 0,
+            };
+            push_inst!(self, InstructionKind::PointerLoadOffset(dest, arr, offset));
+            let val_ty = if let Type::Pointer(inner) = arr_ty {
+                (*inner).clone()
+            } else {
+                Type::I64
+            };
+            self.func.set_type(dest, val_ty);
+            return Ok(dest);
+        }
+
         match arr_ty {
             Type::Tensor(inner, dims) => {
                 let mut indices = Vec::new();

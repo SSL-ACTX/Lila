@@ -14,8 +14,9 @@
 </div>
 
 > [!NOTE]
-> **Project Status: Concluded Proof of Concept / Archived**
-> Lirien started as a proof of concept to demonstrate path-aware liquid type verification for JIT-compiled Python. Having successfully proven this architecture (implementing ADTs, SIMD, monomorphization, and a verified numerical stdlib), active development has been concluded. The repository remains archived for research, study, and educational reference.
+> **Project Status: Personal Experimental Compiler**
+>
+> Lirien is a personal research and development project demonstrating path-aware liquid type verification for JIT-compiled Python (implementing ADTs, SIMD, monomorphization, and a verified numerical stdlib). Feature additions, RFC implementations, and maintenance are driven as an ongoing personal endeavor.
 
 > [!WARNING]
 > Lirien is an experimental research compiler. It is not production-ready and should not be used in critical systems.

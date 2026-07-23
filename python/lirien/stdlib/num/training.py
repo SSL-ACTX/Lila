@@ -118,8 +118,7 @@ def softmax_cross_entropy_with_logits(
         # Find max logit for stability
         max_val = logits[i, 0]
         for j in range(N):
-            if logits[i, j] > max_val:
-                max_val = logits[i, j]
+            max_val = max(max_val, logits[i, j])
 
         # Compute log-sum-exp
         sum_exp = 0.0

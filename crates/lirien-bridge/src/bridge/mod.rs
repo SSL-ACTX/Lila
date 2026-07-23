@@ -146,7 +146,8 @@ pub fn verify_and_compile(
     let mut main_code_ptr = 0;
     let mut native_entries = Vec::new();
 
-    for ssa in ssa_list {
+    for mut ssa in ssa_list {
+        lirien_ir::optimization::unroll_verified_loops(&mut ssa);
         let mut arg_types = Vec::new();
         let mut arg_refinements = HashMap::new();
         for i in 0..ssa.arg_count {

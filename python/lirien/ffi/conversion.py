@@ -181,7 +181,11 @@ def _map_ctypes_arguments(
         actual_ann = getattr(ann, "base_type", ann)
 
         # Resolve actual_ann from type_mapping if it was substituted
-        if (
+        if getattr(actual_ann, "__lirien_specialized__", False):
+            origin = getattr(actual_ann, "__lirien_origin__", None)
+            if origin and type_mapping and origin.__name__ in type_mapping:
+                actual_ann = type_mapping[origin.__name__]
+        elif (
             isinstance(actual_ann, type)
             and type_mapping
             and actual_ann.__name__ in type_mapping

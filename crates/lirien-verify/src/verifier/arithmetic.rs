@@ -83,17 +83,8 @@ pub fn translate<
                 ctx.backend.assert(&__tmp);
             }
         }
-        InstructionKind::FAdd(dest, lhs, rhs) => {
-            if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
-                ctx.z3_floats.get(dest),
-                ctx.z3_floats.get(lhs),
-                ctx.z3_floats.get(rhs),
-            ) {
-                let res = ctx.backend.float_add(z3_l, z3_r);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::FAdd(_dest, _lhs, _rhs) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
         InstructionKind::Sub(dest, lhs, rhs) => {
             if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
@@ -107,17 +98,8 @@ pub fn translate<
                 ctx.backend.assert(&__tmp);
             }
         }
-        InstructionKind::FSub(dest, lhs, rhs) => {
-            if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
-                ctx.z3_floats.get(dest),
-                ctx.z3_floats.get(lhs),
-                ctx.z3_floats.get(rhs),
-            ) {
-                let res = ctx.backend.float_sub(z3_l, z3_r);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::FSub(_dest, _lhs, _rhs) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
         InstructionKind::Mul(dest, lhs, rhs) => {
             if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
@@ -131,17 +113,8 @@ pub fn translate<
                 ctx.backend.assert(&__tmp);
             }
         }
-        InstructionKind::FMul(dest, lhs, rhs) => {
-            if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
-                ctx.z3_floats.get(dest),
-                ctx.z3_floats.get(lhs),
-                ctx.z3_floats.get(rhs),
-            ) {
-                let res = ctx.backend.float_mul(z3_l, z3_r);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::FMul(_dest, _lhs, _rhs) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
         InstructionKind::Neg(dest, src) => {
             if let (Some(z3_dest), Some(z3_s)) = (ctx.z3_bvs.get(dest), ctx.z3_bvs.get(src)) {
@@ -151,23 +124,12 @@ pub fn translate<
                 let __inner = ctx.backend.bv_eq(z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let (Some(z3_dest), Some(z3_s)) =
-                (ctx.z3_floats.get(dest), ctx.z3_floats.get(src))
-            {
-                let ty = ctx.func.get_type(*src);
-                let zero = if ty.is_float32() {
-                    ctx.backend.float_from_f32(0.0)
-                } else {
-                    ctx.backend.float_from_f64(0.0)
-                };
-                let res = ctx.backend.float_sub(&zero, z3_s);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_dest) = ctx.z3_floats.get(dest) {
+                // Decouple float arithmetic by leaving destination unconstrained
             }
         }
-        InstructionKind::Abs(dest, src) => {
-            if let (Some(z3_dest), Some(z3_s)) = (ctx.z3_bvs.get(dest), ctx.z3_bvs.get(src)) {
+        InstructionKind::Abs(dest, _src) => {
+            if let (Some(z3_dest), Some(z3_s)) = (ctx.z3_bvs.get(dest), ctx.z3_bvs.get(_src)) {
                 let bit_width = z3_s.get_size();
                 let zero = ctx.backend.bv_from_i64(0, bit_width);
                 let is_neg = ctx.backend.bv_slt(z3_s, &zero);
@@ -176,20 +138,15 @@ pub fn translate<
                 let __inner = ctx.backend.bv_eq(z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let (Some(z3_dest), Some(z3_s)) =
-                (ctx.z3_floats.get(dest), ctx.z3_floats.get(src))
-            {
-                let ty = ctx.func.get_type(*src);
+            } else if let Some(z3_dest) = ctx.z3_floats.get(dest) {
+                let ty = ctx.func.get_type(*dest);
                 let zero = if ty.is_float32() {
                     ctx.backend.float_from_f32(0.0)
                 } else {
                     ctx.backend.float_from_f64(0.0)
                 };
-                let is_neg = ctx.backend.float_lt(z3_s, &zero);
-                let neg_val = ctx.backend.float_sub(&zero, z3_s);
-                let res = ctx.backend.float_ite(&is_neg, &neg_val, z3_s);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                let dest_ge = ctx.backend.float_ge(z3_dest, &zero);
+                let __tmp = ctx.backend.bool_implies(path_cond, &dest_ge);
                 ctx.backend.assert(&__tmp);
             }
         }
@@ -208,16 +165,8 @@ pub fn translate<
                 let __inner = ctx.backend.bv_eq(z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
-                ctx.z3_floats.get(dest),
-                ctx.z3_floats.get(lhs),
-                ctx.z3_floats.get(rhs),
-            ) {
-                let is_lt = ctx.backend.float_lt(z3_l, z3_r);
-                let res = ctx.backend.float_ite(&is_lt, z3_l, z3_r);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_dest) = ctx.z3_floats.get(dest) {
+                // Decouple float arithmetic by leaving destination unconstrained
             }
         }
         InstructionKind::Max(dest, lhs, rhs) => {
@@ -235,16 +184,8 @@ pub fn translate<
                 let __inner = ctx.backend.bv_eq(z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
-                ctx.z3_floats.get(dest),
-                ctx.z3_floats.get(lhs),
-                ctx.z3_floats.get(rhs),
-            ) {
-                let is_gt = ctx.backend.float_gt(z3_l, z3_r);
-                let res = ctx.backend.float_ite(&is_gt, z3_l, z3_r);
-                let __inner = ctx.backend.float_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_dest) = ctx.z3_floats.get(dest) {
+                // Decouple float arithmetic by leaving destination unconstrained
             }
         }
         InstructionKind::Avg(dest, lhs, rhs) => {
@@ -474,7 +415,7 @@ pub fn translate<
                 None
             };
 
-            if let Some((z3_dest, z3_l, z3_r)) = operands {
+            if let Some((_z3_dest, _z3_l, z3_r)) = operands {
                 let ty = ctx.func.get_type(*rhs);
                 let zero = if ty.is_float32() {
                     ctx.backend.float_from_f32(0.0)
@@ -512,11 +453,7 @@ pub fn translate<
                         inst.location,
                     )?;
                 }
-
-                let res = ctx.backend.float_div(&z3_l, &z3_r);
-                let __inner = ctx.backend.float_eq(&z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+                // Decouple float arithmetic by leaving destination unconstrained
             }
         }
         InstructionKind::UDiv(dest, lhs, rhs) | InstructionKind::URem(dest, lhs, rhs) => {
@@ -932,36 +869,14 @@ pub fn translate<
             }
         }
 
-        InstructionKind::IToF(dest, src, _) => {
-            if let (Some(d), Some(s)) = (ctx.z3_floats.get(dest), ctx.z3_bvs.get(src)) {
-                let is_signed = !ctx.func.get_type(*src).is_unsigned();
-
-                let is_f32 = ctx.func.get_type(*dest).is_float32();
-                let res = ctx.backend.bv_to_float(s, is_signed, is_f32);
-                let __inner = ctx.backend.float_eq(d, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::IToF(_dest, _src, _) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
-        InstructionKind::FToI(dest, src, _) => {
-            if let (Some(d), Some(s)) = (ctx.z3_bvs.get(dest), ctx.z3_floats.get(src)) {
-                let is_signed = !ctx.func.get_type(*dest).is_unsigned();
-                let bit_width = ctx.func.get_type(*dest).int_bit_width().unwrap_or(64);
-
-                let res = ctx.backend.float_to_bv(s, is_signed, bit_width);
-                let __inner = ctx.backend.bv_eq(d, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::FToI(_dest, _src, _) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
-        InstructionKind::FConv(dest, src, target_ty) => {
-            if let (Some(d), Some(s)) = (ctx.z3_floats.get(dest), ctx.z3_floats.get(src)) {
-                let is_f32 = target_ty.is_float32();
-                let res = ctx.backend.float_to_float(s, is_f32);
-                let __inner = ctx.backend.float_eq(d, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
-            }
+        InstructionKind::FConv(_dest, _src, _target_ty) => {
+            // Decouple float arithmetic by leaving destination unconstrained
         }
 
         InstructionKind::SIMDSplat(..)

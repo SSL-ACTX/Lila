@@ -204,7 +204,9 @@ def rms_norm_simd(
     for i in range(M):
         acc = acc + a[i] * a[i]
     sum_sq = acc[0] + acc[1] + acc[2] + acc[3]
-    rms = math.sqrt(abs(sum_sq / n) + epsilon)
+    sqrt_input = abs(sum_sq / n) + epsilon
+    assert sqrt_input >= 0.0
+    rms = math.sqrt(sqrt_input)
     assert rms > 0.0
     inv_rms = 1.0 / rms
     for i in range(M):
@@ -240,8 +242,9 @@ def layer_norm_simd(
 
     mean_val = sum_val / n
     var_val = sum_sq / n - mean_val * mean_val
-
-    std_val = math.sqrt(abs(var_val) + epsilon)
+    sqrt_input = abs(var_val) + epsilon
+    assert sqrt_input >= 0.0
+    std_val = math.sqrt(sqrt_input)
     assert std_val > 0.0
     inv_std = 1.0 / std_val
 

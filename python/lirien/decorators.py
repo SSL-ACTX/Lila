@@ -107,31 +107,37 @@ class MonomorphizedFunction:
                     mapping[name] = val
                     return
 
-                # Store the actual class if it's a Lirien object or NamedTuple
-                cls = val.__class__
-                if (
-                    hasattr(cls, "__lirien_struct__")
-                    or hasattr(cls, "__lirien_enum__")
-                    or is_named_tuple(cls)
-                ):
-                    mapping[name] = cls
+                if isinstance(val, type):
+                    mapping[name] = val
                 else:
-                    mapping[name] = _value_to_lirien_type(val)
+                    # Store the actual class if it's a Lirien object or NamedTuple
+                    cls = val.__class__
+                    if (
+                        hasattr(cls, "__lirien_struct__")
+                        or hasattr(cls, "__lirien_enum__")
+                        or is_named_tuple(cls)
+                    ):
+                        mapping[name] = cls
+                    else:
+                        mapping[name] = _value_to_lirien_type(val)
             return
 
         # Handle Protocol
         if _has_protocol(annotation):
             name = annotation.__name__
             if name not in mapping:
-                cls = val.__class__
-                if (
-                    hasattr(cls, "__lirien_struct__")
-                    or hasattr(cls, "__lirien_enum__")
-                    or is_named_tuple(cls)
-                ):
-                    mapping[name] = cls
+                if isinstance(val, type):
+                    mapping[name] = val
                 else:
-                    mapping[name] = _value_to_lirien_type(val)
+                    cls = val.__class__
+                    if (
+                        hasattr(cls, "__lirien_struct__")
+                        or hasattr(cls, "__lirien_enum__")
+                        or is_named_tuple(cls)
+                    ):
+                        mapping[name] = cls
+                    else:
+                        mapping[name] = _value_to_lirien_type(val)
             return
 
         # Handle Higher-Order types (Callable, Closure, FnPointer)
@@ -145,8 +151,32 @@ class MonomorphizedFunction:
             origin = getattr(annotation, "__lirien_origin__", None)
             if origin:
                 name = origin.__name__
-                if name not in mapping:
-                    mapping[name] = annotation
+                val_cls = (
+                    val if isinstance(val, type) else getattr(val, "__class__", None)
+                )
+                val_origin = (
+                    getattr(val_cls, "__lirien_origin__", None) if val_cls else None
+                )
+                origins_match = False
+                if val_origin and origin:
+                    origins_match = (val_origin == origin) or (
+                        val_origin.__name__ == origin.__name__
+                    )
+                if (
+                    val_cls
+                    and getattr(val_cls, "__lirien_specialized__", False)
+                    and origins_match
+                ):
+                    mapping[name] = val_cls
+                    # Recursively match type parameters
+                    ann_params = getattr(annotation, "__lirien_params__", None)
+                    val_params = getattr(val_cls, "__lirien_params__", None)
+                    if ann_params and val_params and len(val_params) == len(ann_params):
+                        for ann_p, val_p in zip(ann_params, val_params):
+                            self._match_typevars(ann_p, val_p, mapping, param_name)
+                else:
+                    if name not in mapping:
+                        mapping[name] = annotation
             return
 
         # 2. Handle Annotated types (Buffer, Tensor, Box, etc.)
@@ -723,6 +753,8 @@ def verify(
 
         sig = inspect.signature(func)
         typevars = _get_all_typevars(sig)
+        if hasattr(func, "__type_params__"):
+            typevars.update(func.__type_params__)
 
         should_monomorphize = (
             typevars

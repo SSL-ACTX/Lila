@@ -34,13 +34,13 @@ pub fn init_values<
                     inner_ty = *inner;
                     break;
                 }
-                Type::Pointer(_) | Type::Struct(_) | Type::TypedDict(_) | Type::Optional(_) => {
+                Type::Pointer(_) | Type::Struct(_) | Type::TypedDict(_) => {
                     is_mem_obj = true;
                     is_non_nullable = true;
                     inner_ty = Type::I64;
                     break;
                 }
-                Type::Tuple(_) | Type::NullablePointer(_) => {
+                Type::Tuple(_) | Type::NullablePointer(_) | Type::Optional(_) => {
                     is_mem_obj = true;
                     is_non_nullable = false;
                     inner_ty = Type::I64;
@@ -390,17 +390,8 @@ pub fn translate<
                 .expect("Tensor dimensions not found")
                 .clone();
 
-            // Calculate flat index in Z3
-            let mut z3_flat_idx = ctx.backend.bv_from_i64(0, 64);
-            let mut z3_stride = ctx.backend.bv_from_i64(1, 64);
-
-            for i in (0..indices.len()).rev() {
+            for i in 0..indices.len() {
                 let idx_val = indices[i];
-                let z3_idx = ctx
-                    .z3_bvs
-                    .get(&idx_val)
-                    .cloned()
-                    .expect("Index not modeled");
                 let z3_dim_int = &dims[i];
 
                 check_symbolic_bounds(
@@ -411,33 +402,36 @@ pub fn translate<
                     tensor.0,
                     inst.location,
                 )?;
-
-                let z3_dim_bv = ctx.backend.int_to_bv(z3_dim_int, 64);
-                let term = ctx.backend.bv_mul(&z3_idx, &z3_stride);
-                z3_flat_idx = ctx.backend.bv_add(&z3_flat_idx, &term);
-
-                if i > 0 {
-                    z3_stride = ctx.backend.bv_mul(&z3_stride, &z3_dim_bv);
-                }
             }
 
-            let z3_idx_int = ctx.backend.bv_to_int(&z3_flat_idx, true);
-
             if let Some(z3_dest) = ctx.z3_bvs.get(dest).cloned() {
+                let mut z3_idx_int = ctx.backend.int_from_i64(0);
+                let mut z3_stride_int = ctx.backend.int_from_i64(1);
+
+                for i in (0..indices.len()).rev() {
+                    let idx_val = indices[i];
+                    let z3_idx = ctx
+                        .z3_bvs
+                        .get(&idx_val)
+                        .cloned()
+                        .expect("Index not modeled");
+                    let z3_dim_int = &dims[i];
+
+                    let idx_int = ctx.backend.bv_to_int(&z3_idx, true);
+                    let term = ctx.backend.int_mul(&idx_int, &z3_stride_int);
+                    z3_idx_int = ctx.backend.int_add(&z3_idx_int, &term);
+
+                    if i > 0 {
+                        z3_stride_int = ctx.backend.int_mul(&z3_stride_int, z3_dim_int);
+                    }
+                }
+
                 let res = ctx.backend.array_select_bv(&z3_tensor_data, &z3_idx_int);
                 let __inner = ctx.backend.bv_eq(&z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let Some(z3_dest) = ctx.z3_floats.get(dest).cloned() {
-                let dest_ty = ctx.func.get_type(*dest);
-                let res = ctx.backend.array_select_float(
-                    &z3_tensor_data,
-                    &z3_idx_int,
-                    matches!(dest_ty, Type::F32),
-                );
-                let __inner = ctx.backend.float_eq(&z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_dest) = ctx.z3_floats.get(dest).cloned() {
+                // Decouple bounds check from actual float values by leaving them unconstrained.
             }
         }
         InstructionKind::TensorDim(dest, tensor, index) => {
@@ -471,17 +465,8 @@ pub fn translate<
                 .expect("Tensor dimensions not found")
                 .clone();
 
-            // Calculate flat index in Z3
-            let mut z3_flat_idx = ctx.backend.bv_from_i64(0, 64);
-            let mut z3_stride = ctx.backend.bv_from_i64(1, 64);
-
-            for i in (0..indices.len()).rev() {
+            for i in 0..indices.len() {
                 let idx_val = indices[i];
-                let z3_idx = ctx
-                    .z3_bvs
-                    .get(&idx_val)
-                    .cloned()
-                    .expect("Index not modeled");
                 let z3_dim_int = &dims[i];
 
                 check_symbolic_bounds(
@@ -492,36 +477,38 @@ pub fn translate<
                     tensor.0,
                     inst.location,
                 )?;
-
-                let z3_dim_bv = ctx.backend.int_to_bv(z3_dim_int, 64);
-                let term = ctx.backend.bv_mul(&z3_idx, &z3_stride);
-                z3_flat_idx = ctx.backend.bv_add(&z3_flat_idx, &term);
-
-                if i > 0 {
-                    z3_stride = ctx.backend.bv_mul(&z3_stride, &z3_dim_bv);
-                }
             }
 
-            let z3_idx_int = ctx.backend.bv_to_int(&z3_flat_idx, true);
-
             if let Some(z3_val) = ctx.z3_bvs.get(val).cloned() {
+                let mut z3_idx_int = ctx.backend.int_from_i64(0);
+                let mut z3_stride_int = ctx.backend.int_from_i64(1);
+
+                for i in (0..indices.len()).rev() {
+                    let idx_val = indices[i];
+                    let z3_idx = ctx
+                        .z3_bvs
+                        .get(&idx_val)
+                        .cloned()
+                        .expect("Index not modeled");
+                    let z3_dim_int = &dims[i];
+
+                    let idx_int = ctx.backend.bv_to_int(&z3_idx, true);
+                    let term = ctx.backend.int_mul(&idx_int, &z3_stride_int);
+                    z3_idx_int = ctx.backend.int_add(&z3_idx_int, &term);
+
+                    if i > 0 {
+                        z3_stride_int = ctx.backend.int_mul(&z3_stride_int, z3_dim_int);
+                    }
+                }
+
                 let stored = ctx
                     .backend
                     .array_store_bv(&z3_tensor_data, &z3_idx_int, &z3_val);
                 let __inner = ctx.backend.array_eq(&z3_dest_data, &stored);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let Some(z3_val) = ctx.z3_floats.get(val).cloned() {
-                let val_ty = ctx.func.get_type(*val);
-                let stored = ctx.backend.array_store_float(
-                    &z3_tensor_data,
-                    &z3_idx_int,
-                    &z3_val,
-                    matches!(val_ty, Type::F32),
-                );
-                let __inner = ctx.backend.array_eq(&z3_dest_data, &stored);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_val) = ctx.z3_floats.get(val).cloned() {
+                // Decouple bounds check from actual float values by leaving them unconstrained.
             }
 
             // Propagate dimensions
@@ -922,6 +909,46 @@ pub fn translate<
                 }
             }
         }
+        InstructionKind::PointerLoadOffset(dest, ptr, offset) => {
+            // Null check
+            let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
+            let zero = ctx.backend.bv_from_i64(0, 64);
+            let is_null = ctx.backend.bv_eq(&ptr_val, &zero);
+            ctx.check_safety(
+                path_cond,
+                &is_null,
+                format!("Potential null pointer dereference at v{}", ptr.0),
+                inst.location,
+            )?;
+
+            let ptr_payload = ctx.z3_arrays.get(ptr).cloned().unwrap();
+            let dest_ty = ctx.func.get_type(*dest);
+            if dest_ty.is_composite() {
+                let dest_payload = ctx.z3_arrays.get(dest).cloned().unwrap();
+                let __inner = ctx.backend.array_eq(&dest_payload, &ptr_payload);
+                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                ctx.backend.assert(&__tmp);
+            } else {
+                // Primitive load
+                let offset_idx = ctx.backend.int_from_i64(*offset as i64);
+                if let Some(dest_bv) = ctx.z3_bvs.get(dest).cloned() {
+                    let res = ctx.backend.array_select_bv(&ptr_payload, &offset_idx);
+                    let __inner = ctx.backend.bv_eq(&dest_bv, &res);
+                    let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                    ctx.backend.assert(&__tmp);
+                } else if let Some(dest_float) = ctx.z3_floats.get(dest).cloned() {
+                    let dest_ty = ctx.func.get_type(*dest);
+                    let res = ctx.backend.array_select_float(
+                        &ptr_payload,
+                        &offset_idx,
+                        matches!(dest_ty, Type::F32),
+                    );
+                    let __inner = ctx.backend.float_eq(&dest_float, &res);
+                    let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                    ctx.backend.assert(&__tmp);
+                }
+            }
+        }
         InstructionKind::PointerStore(ptr, val) => {
             // Null check
             let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
@@ -953,6 +980,45 @@ pub fn translate<
                     let new_payload = ctx.backend.array_store_float(
                         &ptr_payload,
                         &zero_idx,
+                        &val_float,
+                        matches!(val_ty, Type::F32),
+                    );
+                    ctx.z3_arrays.insert(*ptr, new_payload);
+                }
+            }
+        }
+        InstructionKind::PointerStoreOffset(ptr, offset, val) => {
+            // Null check
+            let ptr_val = ctx.z3_bvs.get(ptr).cloned().unwrap();
+            let zero = ctx.backend.bv_from_i64(0, 64);
+            let is_null = ctx.backend.bv_eq(&ptr_val, &zero);
+            ctx.check_safety(
+                path_cond,
+                &is_null,
+                format!("Potential null pointer dereference (store) at v{}", ptr.0),
+                inst.location,
+            )?;
+
+            let ptr_payload = ctx.z3_arrays.get(ptr).cloned().unwrap();
+            let val_ty = ctx.func.get_type(*val);
+            if val_ty.is_composite() {
+                let val_payload = ctx.z3_arrays.get(val).cloned().unwrap();
+                let __inner = ctx.backend.array_eq(&ptr_payload, &val_payload);
+                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                ctx.backend.assert(&__tmp);
+            } else {
+                // Primitive store
+                let offset_idx = ctx.backend.int_from_i64(*offset as i64);
+                if let Some(val_bv) = ctx.z3_bvs.get(val).cloned() {
+                    let new_payload =
+                        ctx.backend
+                            .array_store_bv(&ptr_payload, &offset_idx, &val_bv);
+                    // We need to update the ptr_payload mapping.
+                    ctx.z3_arrays.insert(*ptr, new_payload);
+                } else if let Some(val_float) = ctx.z3_floats.get(val).cloned() {
+                    let new_payload = ctx.backend.array_store_float(
+                        &ptr_payload,
+                        &offset_idx,
                         &val_float,
                         matches!(val_ty, Type::F32),
                     );

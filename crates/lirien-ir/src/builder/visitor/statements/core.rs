@@ -105,15 +105,123 @@ impl CFGBuilder {
     }
 
     pub fn visit_with(&mut self, s: ast::StmtWith) -> BuilderResult<()> {
-        for item in s.items {
-            let val = self.visit_expr(item.context_expr)?;
-            if let Some(vars) = item.optional_vars {
-                self.handle_assignment_target(&vars, val)?;
+        let mut is_clif = false;
+        let mut inputs_expr = None;
+        let mut outputs_expr = None;
+
+        if s.items.len() == 1 {
+            let item = &s.items[0];
+            if let ast::Expr::Call(ref call) = item.context_expr {
+                if let ast::Expr::Name(ref func_name) = *call.func {
+                    if func_name.id.as_str() == "clif" {
+                        is_clif = true;
+                        for kw in &call.keywords {
+                            if let Some(ref arg) = kw.arg {
+                                if arg == "inputs" {
+                                    inputs_expr = Some(kw.value.clone());
+                                } else if arg == "outputs" {
+                                    outputs_expr = Some(kw.value.clone());
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        for stmt in s.body {
-            self.visit_stmt(stmt)?;
+        if is_clif {
+            let mut registers = HashMap::new();
+            let mut outputs = HashMap::new();
+
+            if let Some(ast::Expr::Dict(dict)) = inputs_expr {
+                for (k_opt, v_expr) in dict.keys.iter().zip(dict.values.iter()) {
+                    // Try pattern 1: key is string constant ("v0"), value is variable name (a)
+                    if let Some(ast::Expr::Constant(ref c)) = k_opt {
+                        if let ast::Constant::Str(ref reg_name) = c.value {
+                            if let ast::Expr::Name(ref var_name) = v_expr {
+                                let val = self
+                                    .read_variable(var_name.id.to_string(), self.current_block)?;
+                                registers.insert(reg_name.to_string(), val);
+                                continue;
+                            }
+                        }
+                    }
+                    // Try pattern 2: key is variable name (a), value is string constant ("v0")
+                    if let Some(ast::Expr::Name(ref var_name)) = k_opt {
+                        let val =
+                            self.read_variable(var_name.id.to_string(), self.current_block)?;
+                        if let ast::Expr::Constant(ref c) = v_expr {
+                            if let ast::Constant::Str(ref reg_name) = c.value {
+                                registers.insert(reg_name.to_string(), val);
+                                continue;
+                            }
+                        }
+                    }
+                    // Try pattern 3: the existing format (key is variable name, value is register variable name)
+                    if let Some(ast::Expr::Name(k_name)) = k_opt {
+                        let val = self.read_variable(k_name.id.to_string(), self.current_block)?;
+                        if let ast::Expr::Name(v_name) = v_expr {
+                            registers.insert(v_name.id.to_string(), val);
+                        }
+                    }
+                }
+            }
+
+            if let Some(ast::Expr::Dict(dict)) = outputs_expr {
+                for (k_opt, v_expr) in dict.keys.iter().zip(dict.values.iter()) {
+                    // Try pattern 1: key is string register ("v3"), value is string variable ("res")
+                    if let Some(ast::Expr::Constant(ref c1)) = k_opt {
+                        if let ast::Constant::Str(ref reg_name) = c1.value {
+                            if let ast::Expr::Constant(ref c2) = v_expr {
+                                if let ast::Constant::Str(ref var_name) = c2.value {
+                                    outputs.insert(reg_name.to_string(), var_name.to_string());
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    // Try pattern 2: key is register name (v3), value is string target variable name ("res")
+                    if let Some(ast::Expr::Name(k_name)) = k_opt {
+                        if let ast::Expr::Constant(ref c) = v_expr {
+                            if let ast::Constant::Str(ref s) = c.value {
+                                outputs.insert(k_name.id.to_string(), s.to_string());
+                            }
+                        } else if let ast::Expr::Name(ref v_name) = v_expr {
+                            outputs.insert(k_name.id.to_string(), v_name.id.to_string());
+                        }
+                    }
+                }
+            }
+
+            self.clif_context = Some(crate::builder::ClifContext { registers, outputs });
+
+            for stmt in s.body {
+                self.visit_stmt(stmt)?;
+            }
+
+            let mut pending_outputs = Vec::new();
+            if let Some(ref ctx) = self.clif_context {
+                for (v_reg, py_var) in &ctx.outputs {
+                    if let Some(&val) = ctx.registers.get(v_reg) {
+                        pending_outputs.push((py_var.clone(), val));
+                    }
+                }
+            }
+            for (py_var, val) in pending_outputs {
+                self.write_variable(py_var, self.current_block, val);
+            }
+            self.clif_context = None;
+        } else {
+            for item in s.items {
+                let val = self.visit_expr(item.context_expr)?;
+                if let Some(vars) = item.optional_vars {
+                    self.handle_assignment_target(&vars, val)?;
+                }
+            }
+
+            for stmt in s.body {
+                self.visit_stmt(stmt)?;
+            }
         }
 
         Ok(())

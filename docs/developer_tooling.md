@@ -24,6 +24,32 @@ def fast_add(a: i64, b: i64) -> i64:
 
 ---
 
+## Direct Inline Cranelift Blocks (`with clif(...)`)
+
+For high-performance low-level kernel optimization and direct register-level memory operations, Lirien supports inline Cranelift IR blocks using the `with clif(...)` context manager.
+
+This allows you to map Python variables directly to SSA virtual registers (`v0`, `v1`, `v2`, `v3`), execute direct arithmetic and pointer offset loads/stores (`v0[offset]`), and bind output values back to Python variables.
+
+```python
+from lirien import verify, i64, Box
+from lirien.clif import clif, v0, v1, v2, v3
+
+@verify
+def clif_kernel(a: i64, b: i64) -> i64:
+    offset = 42
+    with clif(inputs={a: v0, b: v1, offset: v2}, outputs={v3: "res"}):
+        v4 = v0 + v2
+        v3 = v4 // v1
+    return res
+
+@verify
+def clif_store(ptr: Box[i64], val: i64) -> None:
+    with clif(inputs={ptr: v0, val: v1}):
+        v0[0] = val  # Direct pointer store at offset 0
+```
+
+---
+
 ## Scoped Verification Bypass (`no_verification`)
 
 If you want to compile and run tests or run benchmarks without the overhead of Z3 compilation latency, you can run your imports or definitions inside the `no_verification()` context manager. This disables solver checks globally for all `@verify` functions defined within the block.

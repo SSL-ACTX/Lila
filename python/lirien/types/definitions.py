@@ -94,7 +94,16 @@ def struct(cls):
 
                 specialized_cls.__annotations__ = new_annotations
                 # Re-apply @struct to the specialized class
-                return struct(specialized_cls)
+                specialized_cls = struct(specialized_cls)
+
+                # Inject specialized class into module's globals
+                import sys
+
+                module = sys.modules.get(cls.__module__)
+                if module:
+                    setattr(module, specialized_name, specialized_cls)
+
+                return specialized_cls
 
         return GenericStruct
 
@@ -356,7 +365,16 @@ def enum(cls):
 
                 specialized_cls.__annotations__ = new_annotations
                 specialized_cls.__lirien_variant_types__ = new_annotations
-                return enum(specialized_cls)
+                specialized_cls = enum(specialized_cls)
+
+                # Inject specialized class into module's globals
+                import sys
+
+                module = sys.modules.get(cls.__module__)
+                if module:
+                    setattr(module, specialized_name, specialized_cls)
+
+                return specialized_cls
 
         return GenericADT
 

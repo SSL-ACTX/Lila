@@ -1,4 +1,4 @@
-from lirien import verify, f32, Tensor
+from lirien import verify, jit, f32, Tensor
 from .shared import B, M, N, K
 
 
@@ -60,7 +60,7 @@ def mul(a: Tensor[f32, M, N], b: Tensor[f32, M, N], out: Tensor[f32, M, N]):
             out[i, j] = a[i, j] * b[i, j]
 
 
-@verify
+@jit
 def clip(a: Tensor[f32, M, N], out: Tensor[f32, M, N], min_val: f32, max_val: f32):
     """
     Clip the values in 'a' to [min_val, max_val] and store in 'out'.

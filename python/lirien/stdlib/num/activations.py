@@ -52,6 +52,7 @@ def softmax(a: Tensor[f32, M], out: Tensor[f32, M]):
     sum_exp: f32 = 0.0
     for i in range(M):
         sum_exp = sum_exp + math.exp(a[i])
+    assert sum_exp > 0.0
     for i in range(M):
         out[i] = math.exp(a[i]) / sum_exp
 

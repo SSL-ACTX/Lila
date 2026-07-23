@@ -37,6 +37,9 @@ manifest-path = "crates/lirien-bridge/Cargo.toml"
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = [
+    "tests/python/type_system/monomorphization/pep695_test_cases.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]

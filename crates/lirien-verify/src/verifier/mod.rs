@@ -190,20 +190,13 @@ impl<'a, B: SolverBackend> TranslationContext<'a, B> {
         error_message: String,
         location: Option<lirien_ir::ir::SourceLocation>,
     ) -> Result<(), String> {
-        self.backend.push();
-        self.backend.assert(path_cond);
-        self.backend.assert(violation_cond);
-        let violated = self.backend.check()?;
-
-        if violated {
-            let counterexample = get_counterexample_string(self);
-            let loc_info = location.map(|l| format!(" at {}", l)).unwrap_or_default();
-            self.backend.pop(1);
-            Err(format!("{}{}{}", error_message, counterexample, loc_info))
-        } else {
-            self.backend.pop(1);
-            Ok(())
-        }
+        self.safety_checks.push(SafetyCheck {
+            path_cond: path_cond.clone(),
+            violation_cond: violation_cond.clone(),
+            error_message,
+            location,
+        });
+        Ok(())
     }
 }
 
@@ -436,7 +429,9 @@ fn translate_instructions<
                 | InstructionKind::EnumExtract(..)
                 | InstructionKind::Alloc(..)
                 | InstructionKind::PointerLoad(..)
-                | InstructionKind::PointerStore(..) => {
+                | InstructionKind::PointerLoadOffset(..)
+                | InstructionKind::PointerStore(..)
+                | InstructionKind::PointerStoreOffset(..) => {
                     memory::translate(t_ctx, inst, &path_cond)?;
                 }
                 InstructionKind::TupleCreate(..) | InstructionKind::TupleExtract(..) => {

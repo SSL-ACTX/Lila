@@ -74,6 +74,27 @@ class TypeSubstitutor(ast.NodeTransformer):
                 return ast.Constant(value=val)
             name = getattr(val, "__name__", str(val))
             return ast.Name(id=name, ctx=node.ctx)
+
+        for k, val in self.mapping.items():
+            if getattr(val, "__lirien_specialized__", False):
+                origin = getattr(val, "__lirien_origin__", None)
+                if origin and node.id.startswith(f"{origin.__name__}_"):
+                    orig_name = origin.__name__
+                    tvars = [
+                        t
+                        for t in self.mapping.keys()
+                        if t != orig_name and not t.startswith("__")
+                    ]
+                    new_id = node.id
+                    for tvar in tvars:
+                        tvar_val = self.mapping[tvar]
+                        tvar_name = getattr(tvar_val, "__name__", str(tvar_val))
+                        new_id = new_id.replace(f"_{tvar}_", f"_{tvar_name}_")
+                        if new_id.endswith(f"_{tvar}"):
+                            new_id = new_id[: -len(tvar)] + tvar_name
+                    if new_id != node.id:
+                        return ast.Name(id=new_id, ctx=node.ctx)
+
         return self.generic_visit(node)
 
 
