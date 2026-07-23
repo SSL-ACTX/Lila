@@ -142,6 +142,12 @@ pub fn translate<
                     }
                 }
 
+                if let Some(first_incoming_val) = incoming.values().next() {
+                    if let Some(dims) = ctx.z3_tensor_dims.get(first_incoming_val).cloned() {
+                        ctx.z3_tensor_dims.insert(*dest, dims);
+                    }
+                }
+
                 // 3. Translate entry edges as usual (these initialize the loop variables).
                 for (incoming_block, incoming_val) in &entries {
                     let edge_cond = ctx
@@ -157,21 +163,24 @@ pub fn translate<
                         let __inner = ctx.backend.bv_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_floats.get(dest).cloned(),
                         ctx.z3_floats.get(incoming_val).cloned(),
                     ) {
                         let __inner = ctx.backend.float_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_ints.get(dest).cloned(),
                         ctx.z3_ints.get(incoming_val).cloned(),
                     ) {
                         let __inner = ctx.backend.int_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_arrays.get(dest).cloned(),
                         ctx.z3_arrays.get(incoming_val).cloned(),
                     ) {
@@ -266,6 +275,12 @@ pub fn translate<
                     }
                 }
             } else {
+                if let Some(first_incoming_val) = incoming.values().next() {
+                    if let Some(dims) = ctx.z3_tensor_dims.get(first_incoming_val).cloned() {
+                        ctx.z3_tensor_dims.insert(*dest, dims);
+                    }
+                }
+
                 // Not a loop header, process all incoming edges normally.
                 for (incoming_block, incoming_val) in incoming {
                     if !is_reachable(ctx, *incoming_block, current_block_id) {
@@ -285,21 +300,24 @@ pub fn translate<
                         let __inner = ctx.backend.bv_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_floats.get(dest).cloned(),
                         ctx.z3_floats.get(incoming_val).cloned(),
                     ) {
                         let __inner = ctx.backend.float_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_ints.get(dest).cloned(),
                         ctx.z3_ints.get(incoming_val).cloned(),
                     ) {
                         let __inner = ctx.backend.int_eq(&z3_dest, &z3_src);
                         let __tmp = ctx.backend.bool_implies(&edge_cond, &__inner);
                         ctx.backend.assert(&__tmp);
-                    } else if let (Some(z3_dest), Some(z3_src)) = (
+                    }
+                    if let (Some(z3_dest), Some(z3_src)) = (
                         ctx.z3_arrays.get(dest).cloned(),
                         ctx.z3_arrays.get(incoming_val).cloned(),
                     ) {

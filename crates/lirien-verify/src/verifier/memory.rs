@@ -390,17 +390,8 @@ pub fn translate<
                 .expect("Tensor dimensions not found")
                 .clone();
 
-            // Calculate flat index in Z3
-            let mut z3_flat_idx = ctx.backend.bv_from_i64(0, 64);
-            let mut z3_stride = ctx.backend.bv_from_i64(1, 64);
-
-            for i in (0..indices.len()).rev() {
+            for i in 0..indices.len() {
                 let idx_val = indices[i];
-                let z3_idx = ctx
-                    .z3_bvs
-                    .get(&idx_val)
-                    .cloned()
-                    .expect("Index not modeled");
                 let z3_dim_int = &dims[i];
 
                 check_symbolic_bounds(
@@ -411,33 +402,36 @@ pub fn translate<
                     tensor.0,
                     inst.location,
                 )?;
-
-                let z3_dim_bv = ctx.backend.int_to_bv(z3_dim_int, 64);
-                let term = ctx.backend.bv_mul(&z3_idx, &z3_stride);
-                z3_flat_idx = ctx.backend.bv_add(&z3_flat_idx, &term);
-
-                if i > 0 {
-                    z3_stride = ctx.backend.bv_mul(&z3_stride, &z3_dim_bv);
-                }
             }
 
-            let z3_idx_int = ctx.backend.bv_to_int(&z3_flat_idx, true);
-
             if let Some(z3_dest) = ctx.z3_bvs.get(dest).cloned() {
+                let mut z3_idx_int = ctx.backend.int_from_i64(0);
+                let mut z3_stride_int = ctx.backend.int_from_i64(1);
+
+                for i in (0..indices.len()).rev() {
+                    let idx_val = indices[i];
+                    let z3_idx = ctx
+                        .z3_bvs
+                        .get(&idx_val)
+                        .cloned()
+                        .expect("Index not modeled");
+                    let z3_dim_int = &dims[i];
+
+                    let idx_int = ctx.backend.bv_to_int(&z3_idx, true);
+                    let term = ctx.backend.int_mul(&idx_int, &z3_stride_int);
+                    z3_idx_int = ctx.backend.int_add(&z3_idx_int, &term);
+
+                    if i > 0 {
+                        z3_stride_int = ctx.backend.int_mul(&z3_stride_int, z3_dim_int);
+                    }
+                }
+
                 let res = ctx.backend.array_select_bv(&z3_tensor_data, &z3_idx_int);
                 let __inner = ctx.backend.bv_eq(&z3_dest, &res);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let Some(z3_dest) = ctx.z3_floats.get(dest).cloned() {
-                let dest_ty = ctx.func.get_type(*dest);
-                let res = ctx.backend.array_select_float(
-                    &z3_tensor_data,
-                    &z3_idx_int,
-                    matches!(dest_ty, Type::F32),
-                );
-                let __inner = ctx.backend.float_eq(&z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_dest) = ctx.z3_floats.get(dest).cloned() {
+                // Decouple bounds check from actual float values by leaving them unconstrained.
             }
         }
         InstructionKind::TensorDim(dest, tensor, index) => {
@@ -471,17 +465,8 @@ pub fn translate<
                 .expect("Tensor dimensions not found")
                 .clone();
 
-            // Calculate flat index in Z3
-            let mut z3_flat_idx = ctx.backend.bv_from_i64(0, 64);
-            let mut z3_stride = ctx.backend.bv_from_i64(1, 64);
-
-            for i in (0..indices.len()).rev() {
+            for i in 0..indices.len() {
                 let idx_val = indices[i];
-                let z3_idx = ctx
-                    .z3_bvs
-                    .get(&idx_val)
-                    .cloned()
-                    .expect("Index not modeled");
                 let z3_dim_int = &dims[i];
 
                 check_symbolic_bounds(
@@ -492,36 +477,38 @@ pub fn translate<
                     tensor.0,
                     inst.location,
                 )?;
-
-                let z3_dim_bv = ctx.backend.int_to_bv(z3_dim_int, 64);
-                let term = ctx.backend.bv_mul(&z3_idx, &z3_stride);
-                z3_flat_idx = ctx.backend.bv_add(&z3_flat_idx, &term);
-
-                if i > 0 {
-                    z3_stride = ctx.backend.bv_mul(&z3_stride, &z3_dim_bv);
-                }
             }
 
-            let z3_idx_int = ctx.backend.bv_to_int(&z3_flat_idx, true);
-
             if let Some(z3_val) = ctx.z3_bvs.get(val).cloned() {
+                let mut z3_idx_int = ctx.backend.int_from_i64(0);
+                let mut z3_stride_int = ctx.backend.int_from_i64(1);
+
+                for i in (0..indices.len()).rev() {
+                    let idx_val = indices[i];
+                    let z3_idx = ctx
+                        .z3_bvs
+                        .get(&idx_val)
+                        .cloned()
+                        .expect("Index not modeled");
+                    let z3_dim_int = &dims[i];
+
+                    let idx_int = ctx.backend.bv_to_int(&z3_idx, true);
+                    let term = ctx.backend.int_mul(&idx_int, &z3_stride_int);
+                    z3_idx_int = ctx.backend.int_add(&z3_idx_int, &term);
+
+                    if i > 0 {
+                        z3_stride_int = ctx.backend.int_mul(&z3_stride_int, z3_dim_int);
+                    }
+                }
+
                 let stored = ctx
                     .backend
                     .array_store_bv(&z3_tensor_data, &z3_idx_int, &z3_val);
                 let __inner = ctx.backend.array_eq(&z3_dest_data, &stored);
                 let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
                 ctx.backend.assert(&__tmp);
-            } else if let Some(z3_val) = ctx.z3_floats.get(val).cloned() {
-                let val_ty = ctx.func.get_type(*val);
-                let stored = ctx.backend.array_store_float(
-                    &z3_tensor_data,
-                    &z3_idx_int,
-                    &z3_val,
-                    matches!(val_ty, Type::F32),
-                );
-                let __inner = ctx.backend.array_eq(&z3_dest_data, &stored);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+            } else if let Some(_z3_val) = ctx.z3_floats.get(val).cloned() {
+                // Decouple bounds check from actual float values by leaving them unconstrained.
             }
 
             // Propagate dimensions
