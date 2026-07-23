@@ -1,5 +1,5 @@
 import math
-from lirien import verify, f32, f32x4, Tensor
+from lirien import verify, jit, f32, f32x4, Tensor
 from .shared import B, M, N, K
 
 
@@ -186,7 +186,7 @@ def bmm_simd(
                 out[batch, i, j] = acc[0] + acc[1] + acc[2] + acc[3]
 
 
-@verify
+@jit
 def rms_norm_simd(
     a: Tensor[f32x4, M],
     out: Tensor[f32x4, M],
@@ -211,7 +211,7 @@ def rms_norm_simd(
         out[i] = a[i] * inv_rms
 
 
-@verify
+@jit
 def layer_norm_simd(
     a: Tensor[f32x4, M],
     out: Tensor[f32x4, M],

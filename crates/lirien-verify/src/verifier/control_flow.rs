@@ -121,21 +121,25 @@ pub fn translate<
                     }
                 }
 
-                // 2. Assert that program flow reaching the loop header must have entered via an entry edge
                 let mut entry_conds = Vec::new();
-                for (incoming_block, _) in &entries {
-                    let edge_cond = ctx
-                        .edge_conditions
-                        .get(&(*incoming_block, current_block_id))
-                        .unwrap()
-                        .clone();
-                    entry_conds.push(edge_cond);
+                for (entry_block, _) in &entries {
+                    if let Some(edge_cond) =
+                        ctx.edge_conditions.get(&(*entry_block, current_block_id))
+                    {
+                        entry_conds.push(edge_cond.clone());
+                    }
                 }
                 if !entry_conds.is_empty() {
-                    let entry_refs: Vec<&z3::ast::Bool> = entry_conds.iter().collect();
+                    let entry_refs: Vec<&B::Bool> = entry_conds.iter().collect();
                     let or_entries = ctx.backend.bool_or(&entry_refs);
-                    let __tmp = ctx.backend.bool_implies(path_cond, &or_entries);
-                    ctx.backend.assert(&__tmp);
+                    for (back_pred, _) in &backedges {
+                        if let Some(back_edge_cond) =
+                            ctx.edge_conditions.get(&(*back_pred, current_block_id))
+                        {
+                            let __tmp = ctx.backend.bool_implies(back_edge_cond, &or_entries);
+                            ctx.backend.assert(&__tmp);
+                        }
+                    }
                 }
 
                 // 3. Translate entry edges as usual (these initialize the loop variables).

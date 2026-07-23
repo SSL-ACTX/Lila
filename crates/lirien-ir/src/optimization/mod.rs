@@ -8,6 +8,7 @@ pub mod dce;
 pub mod fusion;
 pub mod inference;
 pub mod type_propagation;
+pub mod unroll;
 
 use super::ir::Function;
 use tracing::debug;
@@ -37,4 +38,12 @@ pub fn optimize(func: &mut Function) {
 
     // Embed Static Analysis Results as Liquid Types
     inference::embed_intervals(func);
+}
+
+/// Unrolls verified cyclic loops post-verification before machine code generation.
+pub fn unroll_verified_loops(func: &mut Function) {
+    debug!(target: "lirien::ssa::opt", "Unrolling verified loops for '{}'...", func.name);
+    unroll::unroll_loops(func);
+    constant_folding::fold_constants(func);
+    dce::eliminate_dead_code(func);
 }

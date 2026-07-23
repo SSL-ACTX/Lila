@@ -43,10 +43,13 @@ class TestLoopVerification(unittest.TestCase):
     def test_safe_dynamic_loop(self):
         @verify
         def safe_dynamic_loop(buf: Buffer[i64], limit: i64) -> i64:
+            assert limit >= 0
+            assert limit <= 1000000
             if limit <= len(buf):
                 idx = 0
                 for i in range(limit):
-                    buf[idx] = 42
+                    assert i >= 0
+                    buf[i] = 42
                     idx = idx + 1
                 return idx
             return 0

@@ -80,8 +80,11 @@ The SSA instructions are converted to Z3 expressions.
 *   **Safety Checking:** Z3 proves the safety of index offsets, asserts, pointer loads/stores, and division operations across all paths.
 *   **Refinement Type Analysis:** Refinement types are checked against variable constraints. If any path can violate a precondition or postcondition, the compilation is aborted and a compile error is raised.
 
+### 5.5. Post-Verification Loop Unrolling (`unroll_verified_loops`)
+Once Z3 proves loop safety over compact cyclic CFGs in $O(1)$ constant time, the `unroll_verified_loops` optimization pass flattens verified static loops into straight-line SSA basic blocks prior to code generation.
+
 ### 6. Code Generation (`lirien-backend`)
-The verified SSA IR is mapped to Cranelift IR instructions. Cranelift's JIT compiles the bytecode directly to native machine instructions placed inside a read/execute memory page.
+The verified SSA IR is mapped to Cranelift IR instructions (or executed via `with clif(...)` blocks for direct register manipulation and offset memory loads/stores). Cranelift's JIT compiles the bytecode directly to native machine instructions placed inside a read/execute memory page.
 
 ### 7. Trampoline Installation
 Using PyO3, the compiler creates a lightweight C-ABI trampoline that acts as the `__call__` interface for the Python function object. Subsequent Python calls jump straight into the JIT memory buffer, bypassing the interpreter completely.

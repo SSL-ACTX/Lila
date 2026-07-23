@@ -1,5 +1,5 @@
 import math
-from lirien import verify, f32, Tensor
+from lirien import verify, jit, f32, Tensor
 from .shared import M, N
 
 
@@ -60,7 +60,7 @@ def adamw_step(
             param[i, j] = param[i, j] - lr * (m_hat / denom + wd * param[i, j])
 
 
-@verify
+@jit
 def sigmoid_cross_entropy(
     logits: Tensor[f32, M, N],
     targets: Tensor[f32, M, N],

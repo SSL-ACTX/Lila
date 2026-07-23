@@ -90,7 +90,7 @@ def standardize(a: Tensor[f32, M], out: Tensor[f32, M], mean_val: f32, std_val: 
         out[i] = (a[i] - mean_val) / std_val
 
 
-@verify
+@jit
 def l2_normalize(a: Tensor[f32, M], out: Tensor[f32, M], epsilon: f32):
     """
     L2 normalize a 1D vector 'a', storing the result in 'out'.
@@ -124,7 +124,7 @@ def l1_normalize(a: Tensor[f32, M], out: Tensor[f32, M], epsilon: f32):
         out[i] = a[i] / divisor
 
 
-@verify
+@jit
 def cosine_similarity(
     a: Tensor[f32, M],
     b: Tensor[f32, M],
@@ -150,7 +150,7 @@ def cosine_similarity(
     out[0] = dot_val / denom
 
 
-@verify
+@jit
 def rms_norm(a: Tensor[f32, M], out: Tensor[f32, M], epsilon: f32, n: f32):
     """
     Root Mean Square Normalization (RMSNorm) of 'a', storing in 'out'.
@@ -168,7 +168,7 @@ def rms_norm(a: Tensor[f32, M], out: Tensor[f32, M], epsilon: f32, n: f32):
         out[i] = a[i] / rms
 
 
-@verify
+@jit
 def layer_norm(
     a: Tensor[f32, M],
     out: Tensor[f32, M],

@@ -1,5 +1,5 @@
 import math
-from lirien import verify, f32, Tensor
+from lirien import verify, jit, f32, Tensor
 from .shared import M, N
 
 
@@ -68,7 +68,7 @@ def silu(a: Tensor[f32, M, N], out: Tensor[f32, M, N]):
             out[i, j] = val / (1.0 + math.exp(-val))
 
 
-@verify
+@jit
 def hardsigmoid(a: Tensor[f32, M, N], out: Tensor[f32, M, N]):
     """
     Apply element-wise Hard Sigmoid activation.
@@ -85,7 +85,7 @@ def hardsigmoid(a: Tensor[f32, M, N], out: Tensor[f32, M, N]):
                 out[i, j] = val / 6.0
 
 
-@verify
+@jit
 def hardswish(a: Tensor[f32, M, N], out: Tensor[f32, M, N]):
     """
     Apply element-wise Hard Swish activation.
