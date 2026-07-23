@@ -49,6 +49,7 @@ from .decorators import (
     invariant,
 )
 from .stdlib import num
+from .stdlib import crypto
 from . import clif
 from .diagnostics import (
     get_cpu_info,
@@ -123,7 +124,9 @@ __all__ = [
     "TypeVar",
     "num",
     "clif",
+    "crypto",
 ]
 
 sys.modules["lirien.num"] = num
 sys.modules["lirien.clif"] = clif
+sys.modules["lirien.crypto"] = crypto

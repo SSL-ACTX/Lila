@@ -11,7 +11,23 @@ pub fn lower<M: Module>(
         ($dest:expr, $lhs:expr, $rhs:expr, $op:ident) => {{
             let l = get_val(&ctx.values, $lhs);
             let r = get_val(&ctx.values, $rhs);
-            let res = ctx.builder.ins().$op(l, r);
+            let l_ty = ctx.builder.func.dfg.value_type(l);
+            let r_ty = ctx.builder.func.dfg.value_type(r);
+            let r_adj = if l_ty != r_ty {
+                if l_ty.bits() < r_ty.bits() {
+                    ctx.builder.ins().ireduce(l_ty, r)
+                } else {
+                    ctx.builder.ins().uextend(l_ty, r)
+                }
+            } else {
+                r
+            };
+            let l_adj = if l_ty != ctx.builder.func.dfg.value_type(r_adj) {
+                l
+            } else {
+                l
+            };
+            let res = ctx.builder.ins().$op(l_adj, r_adj);
             ctx.values.insert(*$dest, res);
         }};
     }

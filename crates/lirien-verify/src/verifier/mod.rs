@@ -310,6 +310,16 @@ fn translate_instructions<
 >(
     t_ctx: &mut TranslationContext<'_, B>,
 ) -> Result<(), String> {
+    eprintln!(
+        "[DEBUG] translate_instructions for function: {}",
+        t_ctx.func.name
+    );
+    for block in &t_ctx.func.blocks {
+        eprintln!("[DEBUG]   block id: {:?}", block.id);
+        for inst in &block.instructions {
+            eprintln!("[DEBUG]     inst kind: {:?}", inst.kind);
+        }
+    }
     tracing::info!(target: "lirien::verify::verifier", "Translating instructions for '{}'...", t_ctx.func.name);
     for block in &t_ctx.func.blocks {
         let path_cond = t_ctx.block_conditions.get(&block.id).unwrap().clone();
@@ -578,6 +588,7 @@ pub fn assert_preconditions<
                 prec.as_str()
             };
             let z3_prec = parse_bool_expr_with_resolver(clean_prec, &resolver)?;
+            eprintln!("[DEBUG] assert_preconditions: prec = {}, parsed to Z3 successfully", clean_prec);
             let assume_prec = t_ctx.backend.bool_implies(&path_cond, &z3_prec);
             t_ctx.backend.assert(&assume_prec);
         }

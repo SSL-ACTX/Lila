@@ -95,6 +95,7 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
     let isa = isa_builder
         .finish(settings::Flags::new(flag_builder))
         .map_err(|e| e.to_string())?;
+    eprintln!("[DEBUG] ISA pointer type: {:?}", isa.pointer_type());
 
     let mut jit_builder =
         JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
@@ -820,7 +821,8 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
         }
 
         cg_ctx.builder.seal_all_blocks();
-        cg_ctx.builder.finalize();
+        let config = cg_ctx.module.isa().frontend_config();
+        cg_ctx.builder.finalize(config);
     }
 
     module

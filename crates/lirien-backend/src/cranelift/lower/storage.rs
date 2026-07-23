@@ -27,12 +27,34 @@ pub fn copy_memory(builder: &mut FunctionBuilder, src_ptr: Value, dest_ptr: Valu
     }
 }
 
+pub fn stack_store_with_ptr_ty(
+    builder: &mut FunctionBuilder,
+    val: Value,
+    slot: StackSlot,
+    offset: i32,
+    ptr_ty: Type,
+) {
+    let addr = builder.ins().stack_addr(ptr_ty, slot, offset);
+    builder.ins().store(MemFlagsData::new(), val, addr, 0);
+}
+
+pub fn stack_store_safe<M: Module>(
+    ctx: &mut CodegenContext<M>,
+    val: Value,
+    slot: StackSlot,
+    offset: i32,
+) {
+    let ptr_ty = ctx.module.target_config().pointer_type();
+    stack_store_with_ptr_ty(&mut ctx.builder, val, slot, offset, ptr_ty);
+}
+
 pub fn copy_to_stack(
     builder: &mut FunctionBuilder,
     src_ptr: Value,
     slot: StackSlot,
     slot_offset: i32,
     size: usize,
+    ptr_ty: Type,
 ) {
     let mut curr_offset = 0;
     while curr_offset < size {
@@ -50,9 +72,7 @@ pub fn copy_to_stack(
         let val = builder
             .ins()
             .load(cl_ty, MemFlagsData::new(), src_ptr, curr_offset as i32);
-        builder
-            .ins()
-            .stack_store(val, slot, slot_offset + curr_offset as i32);
+        stack_store_with_ptr_ty(builder, val, slot, slot_offset + curr_offset as i32, ptr_ty);
         curr_offset += chunk_size;
     }
 }
@@ -66,7 +86,7 @@ impl StorageDest {
     pub fn store<M: Module>(&self, ctx: &mut CodegenContext<M>, val: Value, offset: i32) {
         match self {
             StorageDest::Stack(slot) => {
-                ctx.builder.ins().stack_store(val, *slot, offset);
+                stack_store_safe(ctx, val, *slot, offset);
             }
             StorageDest::Addr(ptr) => {
                 ctx.builder
@@ -85,7 +105,8 @@ impl StorageDest {
     ) {
         match self {
             StorageDest::Stack(slot) => {
-                copy_to_stack(&mut ctx.builder, src_val, *slot, offset, size);
+                let ptr_ty = ctx.module.target_config().pointer_type();
+                copy_to_stack(&mut ctx.builder, src_val, *slot, offset, size, ptr_ty);
             }
             StorageDest::Addr(ptr) => {
                 let size_val = ctx.builder.ins().iconst(types::I64, size as i64);

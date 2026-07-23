@@ -400,7 +400,13 @@ impl CFGBuilder {
             ast::Operator::BitOr => InstructionKind::Or(dest, lhs, rhs),
             ast::Operator::BitXor => InstructionKind::Xor(dest, lhs, rhs),
             ast::Operator::LShift => InstructionKind::Shl(dest, lhs, rhs),
-            ast::Operator::RShift => InstructionKind::AShr(dest, lhs, rhs),
+            ast::Operator::RShift => {
+                if l_ty.is_unsigned() {
+                    InstructionKind::LShr(dest, lhs, rhs)
+                } else {
+                    InstructionKind::AShr(dest, lhs, rhs)
+                }
+            }
             _ => {
                 return Err(builder_error!(
                     General,

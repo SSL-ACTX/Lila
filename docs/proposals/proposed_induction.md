@@ -2,7 +2,7 @@
 
 **Document Status:** Technical RFC / Proposal  
 **Target Subsystems:** `lirien-ir` (SSA Builder & Optimizations), `lirien-verify` (Z3 SMT Backend), `lirien-backend` (Cranelift Lowering)  
-**Author:** Collaborative Compiler Design  
+**Author:** Seuriin (Jameel Tutungan)
 
 ---
 

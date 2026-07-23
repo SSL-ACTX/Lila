@@ -2,7 +2,7 @@
 
 **Document Status:** Technical RFC / Proposal  
 **Target Subsystems:** `lirien-ir` (Refinement & Type Builder), `lirien-verify` (Z3 SMT Backend), `lirien/stdlib` (Stdlib Annotations)  
-**Author:** Collaborative Compiler Design  
+**Author:** Seuriin (Jameel Tutungan)
 
 ---
 

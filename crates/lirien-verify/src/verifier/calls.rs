@@ -18,6 +18,58 @@ pub fn translate<
     path_cond: &Bool,
 ) -> Result<(), String> {
     if let InstructionKind::Call(dest, target_name, args) = &inst.kind {
+        let is_type_cast = matches!(
+            target_name.as_str(),
+            "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+        );
+        if is_type_cast && args.len() >= 2 {
+            let (target_width, is_signed) = match target_name.as_str() {
+                "u8" => (8, false),
+                "u16" => (16, false),
+                "u32" => (32, false),
+                "u64" => (64, false),
+                "i8" => (8, true),
+                "i16" => (16, true),
+                "i32" => (32, true),
+                "i64" => (64, true),
+                _ => unreachable!(),
+            };
+            if let (Some(z3_dest), Some(z3_src)) =
+                (t_ctx.z3_bvs.get(dest), t_ctx.z3_bvs.get(&args[1]))
+            {
+                let src_size = z3_src.get_size();
+                let res = if src_size == target_width {
+                    z3_src.clone()
+                } else if src_size < target_width {
+                    if is_signed {
+                        z3_src.sign_ext(target_width - src_size)
+                    } else {
+                        z3_src.zero_ext(target_width - src_size)
+                    }
+                } else {
+                    z3_src.extract(target_width - 1, 0)
+                };
+
+                let dest_size = z3_dest.get_size();
+                let res_matched = if res.get_size() == dest_size {
+                    res
+                } else if res.get_size() < dest_size {
+                    if is_signed {
+                        res.sign_ext(dest_size - res.get_size())
+                    } else {
+                        res.zero_ext(dest_size - res.get_size())
+                    }
+                } else {
+                    res.extract(dest_size - 1, 0)
+                };
+
+                let __inner = t_ctx.backend.bv_eq(z3_dest, &res_matched);
+                let __tmp = t_ctx.backend.bool_implies(path_cond, &__inner);
+                t_ctx.backend.assert(&__tmp);
+            }
+            return Ok(());
+        }
+
         let registry = lirien_ir::registry::GLOBAL_REGISTRY.lock().unwrap();
 
         let sig = if target_name == &t_ctx.func.name {

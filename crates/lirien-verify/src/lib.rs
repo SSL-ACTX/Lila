@@ -45,7 +45,9 @@ pub fn verify(func: &Function, timeout_ms: u32) -> Result<Option<String>, String
     // 3. Logic Verification with Backend
     tracing::info!(target: "lirien::verify", "Starting verification for '{}'...", func.name);
     let ctx = Context::thread_local();
-    let solver = Solver::new();
+    let solver = Solver::new_for_logic("QF_ABV").unwrap_or_else(|| {
+        Solver::new()
+    });
 
     let mut backend = z3_backend::Z3Backend::new(&ctx, &solver);
 

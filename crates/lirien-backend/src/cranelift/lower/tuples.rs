@@ -33,7 +33,9 @@ pub fn lower<M: Module>(
                 offset += elt_ty.size(&ctx.ssa_func.struct_layouts);
             }
 
-            let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
+            let ptr_ty = ctx.module.target_config().pointer_type();
+            eprintln!("[DEBUG] tuples stack_addr pointer type: {:?}", ptr_ty);
+            let addr = ctx.builder.ins().stack_addr(ptr_ty, slot, 0);
             ctx.values.insert(*dest, addr);
             ctx.unpacked_values.insert(*dest, all_flat_vals);
         }

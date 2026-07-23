@@ -37,16 +37,19 @@ pub(crate) fn parse_bv_expr(
         "&" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_sizes(lhs, rhs);
             Ok(lhs.bvand(&rhs))
         }
         "|" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_sizes(lhs, rhs);
             Ok(lhs.bvor(&rhs))
         }
         "^" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_sizes(lhs, rhs);
             Ok(lhs.bvxor(&rhs))
         }
         "~" => {
@@ -56,22 +59,26 @@ pub(crate) fn parse_bv_expr(
         "<<" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_shift_amount(lhs, rhs);
             Ok(lhs.bvshl(&rhs))
         }
         ">>" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_shift_amount(lhs, rhs);
             Ok(lhs.bvashr(&rhs))
         }
         // Arithmetic ops in BV context
         "+" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_sizes(lhs, rhs);
             Ok(lhs.bvadd(&rhs))
         }
         "-" => {
             let lhs = parse_bv_expr(parts[1], v_bv, v_int, resolver)?;
             let rhs = parse_bv_expr(parts[2], v_bv, v_int, resolver)?;
+            let (lhs, rhs) = match_sizes(lhs, rhs);
             Ok(lhs.bvsub(&rhs))
         }
         "VALUE_PLACEHOLDER" => v_bv
@@ -83,4 +90,31 @@ pub(crate) fn parse_bv_expr(
             Ok(BV::from_int(&int_val, 64))
         }
     }
+}
+
+fn match_sizes(lhs: BV, rhs: BV) -> (BV, BV) {
+    let l_bits = lhs.get_size();
+    let r_bits = rhs.get_size();
+    if l_bits == r_bits {
+        (lhs, rhs)
+    } else if l_bits > r_bits {
+        let rhs_extended = rhs.zero_ext(l_bits - r_bits);
+        (lhs, rhs_extended)
+    } else {
+        let lhs_extended = lhs.zero_ext(r_bits - l_bits);
+        (lhs_extended, rhs)
+    }
+}
+
+fn match_shift_amount(lhs: BV, rhs: BV) -> (BV, BV) {
+    let l_bits = lhs.get_size();
+    let r_bits = rhs.get_size();
+    let rhs_matched = if r_bits == l_bits {
+        rhs
+    } else if r_bits < l_bits {
+        rhs.zero_ext(l_bits - r_bits)
+    } else {
+        rhs.extract(l_bits - 1, 0)
+    };
+    (lhs, rhs_matched)
 }

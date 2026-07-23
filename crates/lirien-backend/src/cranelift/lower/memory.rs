@@ -185,7 +185,11 @@ pub fn lower<M: Module>(
                     size as u32,
                     align_shift,
                 ));
-                let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
+                let addr = ctx.builder.ins().stack_addr(
+                    ctx.module.target_config().pointer_type(),
+                    slot,
+                    0,
+                );
                 super::storage::store_to_memory(ctx, *val, addr, 0);
                 addr
             };
@@ -348,7 +352,11 @@ pub fn lower<M: Module>(
                     size as u32,
                     align_shift,
                 ));
-                let addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
+                let addr = ctx.builder.ins().stack_addr(
+                    ctx.module.target_config().pointer_type(),
+                    slot,
+                    0,
+                );
                 super::storage::store_to_memory(ctx, *val, addr, 0);
                 addr
             };
@@ -513,12 +521,11 @@ pub fn lower<M: Module>(
                 (src_rank * 8) as u32,
                 3,
             ));
+            let ptr_ty = ctx.module.target_config().pointer_type();
             for (i, &dim) in src_dims.iter().enumerate() {
-                ctx.builder
-                    .ins()
-                    .stack_store(dim, src_dims_slot, (i * 8) as i32);
+                super::storage::stack_store_safe(ctx, dim, src_dims_slot, (i * 8) as i32);
             }
-            let src_dims_ptr = ctx.builder.ins().stack_addr(types::I64, src_dims_slot, 0);
+            let src_dims_ptr = ctx.builder.ins().stack_addr(ptr_ty, src_dims_slot, 0);
 
             let target_dims_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
@@ -526,14 +533,9 @@ pub fn lower<M: Module>(
                 3,
             ));
             for (i, &dim) in target_dim_vals.iter().enumerate() {
-                ctx.builder
-                    .ins()
-                    .stack_store(dim, target_dims_slot, (i * 8) as i32);
+                super::storage::stack_store_safe(ctx, dim, target_dims_slot, (i * 8) as i32);
             }
-            let target_dims_ptr = ctx
-                .builder
-                .ins()
-                .stack_addr(types::I64, target_dims_slot, 0);
+            let target_dims_ptr = ctx.builder.ins().stack_addr(ptr_ty, target_dims_slot, 0);
 
             let mut sig = ctx.module.make_signature();
             sig.params.push(AbiParam::new(types::I64)); // src_ptr
@@ -764,7 +766,10 @@ pub fn lower<M: Module>(
                 field_offset += f_ty.size(&ctx.ssa_func.struct_layouts);
             }
 
-            let dest_addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
+            let dest_addr =
+                ctx.builder
+                    .ins()
+                    .stack_addr(ctx.module.target_config().pointer_type(), slot, 0);
             ctx.values.insert(*dest, dest_addr);
         }
         InstructionKind::StructLoad(dest, obj, offset) => {
@@ -886,7 +891,7 @@ pub fn lower<M: Module>(
             ));
 
             let tag_val = ctx.builder.ins().iconst(types::I8, *tag_idx as i64);
-            ctx.builder.ins().stack_store(tag_val, slot, 0);
+            super::storage::stack_store_safe(ctx, tag_val, slot, 0);
 
             if let Some(p) = payload {
                 let p_val = get_val(&ctx.values, p);
@@ -897,15 +902,26 @@ pub fn lower<M: Module>(
                 let mut offset = 1;
                 offset = (offset + p_align - 1) & !(p_align - 1);
 
+                let ptr_ty = ctx.module.target_config().pointer_type();
                 if payload_ty.is_composite() {
                     let p_size = payload_ty.size(&ctx.ssa_func.struct_layouts);
-                    super::copy_to_stack(&mut ctx.builder, p_val, slot, offset as i32, p_size);
+                    super::storage::copy_to_stack(
+                        &mut ctx.builder,
+                        p_val,
+                        slot,
+                        offset as i32,
+                        p_size,
+                        ptr_ty,
+                    );
                 } else {
-                    ctx.builder.ins().stack_store(p_val, slot, offset as i32);
+                    super::storage::stack_store_safe(ctx, p_val, slot, offset as i32);
                 }
             }
 
-            let dest_addr = ctx.builder.ins().stack_addr(types::I64, slot, 0);
+            let dest_addr =
+                ctx.builder
+                    .ins()
+                    .stack_addr(ctx.module.target_config().pointer_type(), slot, 0);
             ctx.values.insert(*dest, dest_addr);
         }
         InstructionKind::EnumIsVariant(dest, obj, tag_idx) => {

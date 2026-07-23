@@ -65,6 +65,18 @@ impl<'ctx> Z3Backend<'ctx> {
             }
         }
     }
+
+    fn unify_bvs(&self, a: &BV, b: &BV) -> (BV, BV) {
+        let size_a = a.get_size();
+        let size_b = b.get_size();
+        if size_a == size_b {
+            (a.clone(), b.clone())
+        } else if size_a > size_b {
+            (a.clone(), b.zero_ext(size_a - size_b))
+        } else {
+            (a.zero_ext(size_b - size_a), b.clone())
+        }
+    }
 }
 
 impl<'ctx> SolverBackend for Z3Backend<'ctx> {
@@ -90,6 +102,8 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
                     .solver
                     .get_reason_unknown()
                     .unwrap_or_else(|| "unknown".to_string());
+                let solver_str = self.solver.to_string();
+                eprintln!("[DEBUG] Z3 Solver state on Unknown:\n{}", solver_str);
                 Err(format!("Z3 returned Unknown: {}", reason))
             }
         }
@@ -214,7 +228,8 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
     }
 
     fn bv_from_i64(&mut self, val: i64, sz: u32) -> Self::BV {
-        BV::from_i64(val, sz)
+        let i = Int::from_i64(val);
+        BV::from_int(&i, sz)
     }
 
     fn bv_to_int(&mut self, a: &Self::BV, is_signed: bool) -> Self::Int {
@@ -222,47 +237,58 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
     }
 
     fn bv_eq(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.eq(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.eq(&b)
     }
 
     fn bv_add(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvadd(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvadd(&b)
     }
 
     fn bv_sub(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvsub(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsub(&b)
     }
 
     fn bv_mul(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvmul(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvmul(&b)
     }
 
     fn bv_sdiv(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvsdiv(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsdiv(&b)
     }
 
     fn bv_udiv(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvudiv(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvudiv(&b)
     }
 
     fn bv_srem(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvsrem(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsrem(&b)
     }
 
     fn bv_urem(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvurem(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvurem(&b)
     }
 
     fn bv_and(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvand(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvand(&b)
     }
 
     fn bv_or(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvor(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvor(&b)
     }
 
     fn bv_xor(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvxor(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvxor(&b)
     }
 
     fn bv_not(&mut self, a: &Self::BV) -> Self::BV {
@@ -270,15 +296,18 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
     }
 
     fn bv_shl(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvshl(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvshl(&b)
     }
 
     fn bv_lshr(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvlshr(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvlshr(&b)
     }
 
     fn bv_ashr(&mut self, a: &Self::BV, b: &Self::BV) -> Self::BV {
-        a.bvashr(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvashr(&b)
     }
 
     fn bv_sext(&mut self, a: &Self::BV, sz: u32) -> Self::BV {
@@ -294,35 +323,43 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
     }
 
     fn bv_slt(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvslt(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvslt(&b)
     }
 
     fn bv_sle(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvsle(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsle(&b)
     }
 
     fn bv_sgt(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvsgt(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsgt(&b)
     }
 
     fn bv_sge(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvsge(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvsge(&b)
     }
 
     fn bv_ult(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvult(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvult(&b)
     }
 
     fn bv_ule(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvule(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvule(&b)
     }
 
     fn bv_ugt(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvugt(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvugt(&b)
     }
 
     fn bv_uge(&mut self, a: &Self::BV, b: &Self::BV) -> Self::Bool {
-        a.bvuge(b)
+        let (a, b) = self.unify_bvs(a, b);
+        a.bvuge(&b)
     }
 
     fn float_const(&mut self, name: &str, is_f32: bool) -> Self::Float {

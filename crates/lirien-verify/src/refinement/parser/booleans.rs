@@ -118,6 +118,31 @@ pub(crate) fn parse_bool_expr(
                     _ => unreachable!(),
                 }
             } else {
+                if let Some(res) = resolver {
+                    let lhs_bv = super::bitvectors::parse_bv_expr(parts[1], v_bv, v_int, Some(res));
+                    let rhs_bv = super::bitvectors::parse_bv_expr(parts[2], v_bv, v_int, Some(res));
+                    if let (Ok(l), Ok(r)) = (lhs_bv, rhs_bv) {
+                        let size_l = l.get_size();
+                        let size_r = r.get_size();
+                        let (l_unified, r_unified) = if size_l > size_r {
+                            (l.clone(), r.zero_ext(size_l - size_r))
+                        } else if size_r > size_l {
+                            (l.zero_ext(size_r - size_l), r.clone())
+                        } else {
+                            (l, r)
+                        };
+                        return match parts[0] {
+                            "=" => Ok(l_unified.eq(&r_unified)),
+                            "!=" => Ok(l_unified.eq(&r_unified).not()),
+                            "<" => Ok(l_unified.bvslt(&r_unified)),
+                            "<=" => Ok(l_unified.bvsle(&r_unified)),
+                            ">" => Ok(l_unified.bvsgt(&r_unified)),
+                            ">=" => Ok(l_unified.bvsge(&r_unified)),
+                            _ => unreachable!(),
+                        };
+                    }
+                }
+
                 let lhs = super::integers::parse_int_expr(parts[1], v_int, v_arr, v_bv, resolver)?;
                 let rhs = super::integers::parse_int_expr(parts[2], v_int, v_arr, v_bv, resolver)?;
                 match parts[0] {

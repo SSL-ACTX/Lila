@@ -116,6 +116,12 @@ pub(crate) fn parse_int_expr(
             let orelse = parse_int_expr(parts[3], v_int, v_arr, v_bv, resolver)?;
             Ok(cond.ite(&then, &orelse))
         }
+        "len" => {
+            if parts.len() != 2 {
+                return Err("len expects exactly 1 argument".to_string());
+            }
+            parse_int_expr(parts[1], v_int, v_arr, v_bv, resolver)
+        }
         "&" | "|" | "^" | "<<" | ">>" | "~" => {
             // Handle bitwise by converting to BV, performing op, and converting back to Int
             if v_bv.is_none() && v_int.is_none() && resolver.is_none() {

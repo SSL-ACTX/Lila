@@ -1,9 +1,8 @@
 # Technical Proposal: Integrating Portable Inline CLIF Blocks into the Lirien Compiler
 
 **Document Status:** Draft for Review  
-**Author:** Collaborative Systems Design  
 **Target Project:** Lirien (Python JIT Compiler & Verifier)  
-
+**Author:** Seuriin (Jameel Tutungan)
 ---
 
 ## 1. Executive Summary & Objective

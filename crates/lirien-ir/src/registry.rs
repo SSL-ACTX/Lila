@@ -78,9 +78,35 @@ impl Default for Registry {
 impl Registry {
     /// Creates a new empty `Registry`.
     pub fn new() -> Self {
-        Self {
-            functions: HashMap::new(),
+        let mut functions = HashMap::new();
+        let cast_types = vec![
+            ("u8", Type::U8),
+            ("u16", Type::U16),
+            ("u32", Type::U32),
+            ("u64", Type::U64),
+            ("i8", Type::I8),
+            ("i16", Type::I16),
+            ("i32", Type::I32),
+            ("i64", Type::I64),
+            ("f32", Type::F32),
+            ("f64", Type::F64),
+        ];
+        for (name, ret_ty) in cast_types {
+            functions.insert(
+                name.to_string(),
+                FunctionSignature {
+                    name: name.to_string(),
+                    arg_types: vec![Type::Unknown],
+                    arg_refinements: HashMap::new(),
+                    return_type: ret_ty,
+                    return_refinement: None,
+                    preconditions: Vec::new(),
+                    postconditions: Vec::new(),
+                    pointer: 0,
+                },
+            );
         }
+        Self { functions }
     }
 
     /// Registers a function signature.

@@ -104,37 +104,47 @@ impl CFGBuilder {
         let asserts_post = extract_postconditions(&s.body, &param_map, &self.func.struct_layouts);
         self.func.postconditions.extend(asserts_post);
 
+        println!("[DEBUG] s.body size for {}: {}", s.name.as_str(), s.body.len());
+        for (idx, stmt) in s.body.iter().enumerate() {
+            println!("[DEBUG]   stmt {}: {:?}", idx, stmt);
+        }
+
         // Process function assert preconditions at the top
         let mut body_iter = s.body.iter().peekable();
         while let Some(stmt) = body_iter.peek() {
             if let ast::Stmt::Assert(a) = stmt {
                 let mut renamed_expr = *a.test.clone();
                 rename_parameters(&mut renamed_expr, &param_map, None);
-                if let Ok(pred_str) = expr_to_string(
+                match expr_to_string(
                     &renamed_expr,
                     None,
                     &Type::Unknown,
                     &self.func.struct_layouts,
                 ) {
-                    let msg_str = if let Some(ref msg_expr) = a.msg {
-                        if let ast::Expr::Constant(ref c) = **msg_expr {
-                            if let ast::Constant::Str(ref s) = c.value {
-                                Some(s.to_string())
+                    Ok(pred_str) => {
+                        let msg_str = if let Some(ref msg_expr) = a.msg {
+                            if let ast::Expr::Constant(ref c) = **msg_expr {
+                                if let ast::Constant::Str(ref s) = c.value {
+                                    Some(s.to_string())
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
-                    let pred_to_push = if let Some(ref m) = msg_str {
-                        format!("{} :::msg::: {}", pred_str, m)
-                    } else {
-                        pred_str
-                    };
-                    self.func.preconditions.push(pred_to_push);
+                        };
+                        let pred_to_push = if let Some(ref m) = msg_str {
+                            format!("{} :::msg::: {}", pred_str, m)
+                        } else {
+                            pred_str
+                        };
+                        self.func.preconditions.push(pred_to_push);
+                    }
+                    Err(e) => {
+                        eprintln!("[DEBUG] expr_to_string failed for precondition assert: {:?}", e);
+                    }
                 }
                 body_iter.next();
             } else {
