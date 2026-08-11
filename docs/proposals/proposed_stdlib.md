@@ -47,9 +47,11 @@ Parsing binary protocols (like DNS, Protobuf, CBOR, or custom network packets) i
 from typing import Annotated
 from lirien import verify, struct, i64, u8, u16, Refined, Buffer, V
 
+
 # A type representing a valid offset within a buffer of size N
 def OffsetWithin(N: i64):
     return Refined[i64, (V >= 0) & (V < N)]
+
 
 @struct
 class PacketHeader:
@@ -57,35 +59,37 @@ class PacketHeader:
     payload_len: Annotated[i64, (V >= 0) & (V <= 1024)]
     checksum: u8
 
+
 @struct
 class Packet:
     header: PacketHeader
     # A slice of the original buffer, size verified to match payload_len exactly
     payload: Buffer[u8]
 
+
 @verify
 def parse_packet(buf: Buffer[u8]) -> Packet | None:
     # 1. Statically ensure buffer is large enough for the header
-    if buf.len() < 7: # sizeof(PacketHeader)
+    if buf.len() < 7:  # sizeof(PacketHeader)
         return None
-    
+
     # 2. Zero-copy cast: View the front of the buffer as a PacketHeader.
     # Z3 proves this is safe because buf.len() >= 7.
     header = buf.cast_to(PacketHeader, offset=0)
-    
+
     # 3. Verify the magic number
-    if header.magic != 0x4C52: # "LR"
+    if header.magic != 0x4C52:  # "LR"
         return None
-        
+
     # 4. Verify we have enough bytes left in the buffer for the payload
     needed_bytes = 7 + header.payload_len
     if buf.len() < needed_bytes:
         return None
-        
+
     # 5. Extract payload slice.
     # Z3 proves the slice [7:needed_bytes] is within bounds of buf.
     payload_slice = buf.slice(7, needed_bytes)
-    
+
     return Packet(header=header, payload=payload_slice)
 ```
 
@@ -114,10 +118,10 @@ N = TypeVar("N", bound=i64)
 K = TypeVar("K", bound=i64)
 Batch = TypeVarTuple("Batch")
 
+
 @verify
 def batch_matmul(
-    a: Tensor[f32, Unpack[Batch], M, K],
-    b: Tensor[f32, Unpack[Batch], K, N]
+    a: Tensor[f32, Unpack[Batch], M, K], b: Tensor[f32, Unpack[Batch], K, N]
 ) -> Tensor[f32, Unpack[Batch], M, N]:
     # The compiler uses Z3 to verify that the inner dimension 'K' matches.
     # If a user attempts to pass mismatched shapes, it fails to compile.
@@ -147,6 +151,7 @@ from lirien import verify, struct, i64, SizedArray, V, Annotated
 T = TypeVar("T")
 Capacity = TypeVar("Capacity", bound=i64)
 
+
 @struct
 class SPSCQueue(Generic[T, Capacity]):
     buffer: SizedArray[T, Capacity]
@@ -157,19 +162,20 @@ class SPSCQueue(Generic[T, Capacity]):
     # Invariant: 0 <= write_idx - read_idx <= Capacity
     # This invariant is enforced on every operation.
 
+
 @verify
 def try_enqueue(queue: SPSCQueue[T, Capacity], item: T) -> bool:
     w = queue.write_idx
     r = queue.read_idx
-    
+
     # Check if queue is full
     if w - r >= Capacity:
         return False
-        
+
     # Calculate ring index
     ring_idx = w % Capacity
-    
-    # Z3 proves ring_idx is always in [0, Capacity-1], 
+
+    # Z3 proves ring_idx is always in [0, Capacity-1],
     # making this array access guaranteed to be in-bounds.
     queue.buffer[ring_idx] = item
     queue.write_idx = w + 1

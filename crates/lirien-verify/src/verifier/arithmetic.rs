@@ -2,11 +2,7 @@ use super::TranslationContext;
 use lirien_ir::ir::{Instruction, InstructionKind, Type, Value};
 
 macro_rules! debug_print {
-    ($($arg:tt)*) => {{
-        use std::io::Write;
-        eprintln!($($arg)*);
-        let _ = std::io::stderr().flush();
-    }}
+    ($($arg:tt)*) => {{}};
 }
 
 #[allow(dead_code)]
@@ -136,10 +132,16 @@ pub fn translate<
                 ctx.z3_bvs.get(lhs),
                 ctx.z3_bvs.get(rhs),
             ) {
-                let res = ctx.backend.bv_mul(z3_l, z3_r);
-                let __inner = ctx.backend.bv_eq(z3_dest, &res);
-                let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
-                ctx.backend.assert(&__tmp);
+                let lhs_is_const = get_const_int_value(ctx, *lhs).is_some();
+                let rhs_is_const = get_const_int_value(ctx, *rhs).is_some();
+                if lhs_is_const || rhs_is_const {
+                    let res = ctx.backend.bv_mul(z3_l, z3_r);
+                    let __inner = ctx.backend.bv_eq(z3_dest, &res);
+                    let __tmp = ctx.backend.bool_implies(path_cond, &__inner);
+                    ctx.backend.assert(&__tmp);
+                } else {
+                    tracing::debug!(target: "lirien::verify", "Decoupling variable-variable multiplication: leaving dest of v{} * v{} unconstrained", lhs.0, rhs.0);
+                }
             }
         }
         InstructionKind::FMul(_dest, _lhs, _rhs) => {

@@ -11,11 +11,12 @@ Because Lirien functions execute on native primitive types and flat byte buffers
 ```python
 from lirien import verify, parallel_for, Buffer, f64, i64
 
+
 @verify
 def parallel_scale(vec: Buffer[f64], factor: f64) -> None:
     def body(i: i64):
         vec[i] *= factor
-        
+
     # Spawns OS threads without acquiring the Python GIL
     parallel_for(range(len(vec)), body)
 ```
@@ -35,23 +36,31 @@ Instead of generating virtual method tables (vtables) or relying on slow dynamic
 from typing import Protocol
 from lirien import verify, f32, struct, adt
 
+
 class Renderable(Protocol):
     def render(self) -> f32: ...
+
 
 @struct
 class Circle:
     radius: f32
+
     def render(self) -> f32:
         return self.radius * 3.14
+
 
 @adt
 class Shape:
     Rect: f32
     Dot: f32
+
     def render(self) -> f32:
         match self:
-            case Shape.Rect(w): return w * w
-            case Shape.Dot(_):  return 0.0
+            case Shape.Rect(w):
+                return w * w
+            case Shape.Dot(_):
+                return 0.0
+
 
 @verify
 def draw(obj: Renderable) -> f32:
@@ -77,9 +86,10 @@ class Node:
     val: i64
     next: Optional[Box["Node"]]
 
+
 @verify
 def sum_list(n: Optional[Box[Node]]) -> i64:
-    if n is None: 
+    if n is None:
         return 0
     # From here on, `n` is statically narrowed to `Box[Node]`.
     # Accessing .val is guaranteed safe by Z3.
@@ -99,6 +109,7 @@ from lirien import verify, i64, f64, SizedArray
 T = TypeVar("T", i64, f64)
 N = TypeVar("N")  # Const generic integer
 
+
 @verify
 def pad_one(x: SizedArray[T, N], out: SizedArray[T, N + 1]) -> i64:
     for i in range(N):
@@ -116,11 +127,14 @@ Ad-hoc polymorphism can be declared via Python's standard `typing.overload` deco
 from typing import overload
 from lirien import verify, i64, f64
 
+
 @overload
 def compute(x: i64) -> i64: ...
 
+
 @overload
 def compute(x: f64) -> f64: ...
+
 
 @verify
 def compute(x):
@@ -136,6 +150,7 @@ When a function parameter is annotated as `typing.Literal[N]`, the compiler trea
 ```python
 from typing import Literal
 from lirien import verify, i64
+
 
 @verify
 def unrolled_sum(limit: Literal[5]) -> i64:
@@ -154,6 +169,7 @@ Lirien supports vector-register types directly. Operations on these types transl
 
 ```python
 from lirien import verify, i8x16
+
 
 @verify
 def process_pixels(a: i8x16, b: i8x16) -> i8x16:

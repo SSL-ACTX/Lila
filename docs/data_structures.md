@@ -13,15 +13,18 @@ Lirien automatically derives `__repr__` and `__eq__` behaviors for all `@struct`
 ```python
 from lirien import struct, f64, i32, Refined
 
+
 @struct
 class Point:
     x: f64
     y: f64
 
+
 @struct
 class Trace:
     p: Point  # Inlined directly starting at offset 0 (16 bytes)
-    id: i32   # Placed at offset 16
+    id: i32  # Placed at offset 16
+
 
 # Refinement predicates can traverse nested struct fields
 SafeTrace = Refined[Trace, lambda t: t.p.x > 0]
@@ -36,9 +39,13 @@ Classes decorated with `@value` act as pass-by-value aggregates. They are alloca
 ```python
 from lirien import value, i64, Buffer, verify
 
+
 @value
 class Point3D:
-    x: i64; y: i64; z: i64
+    x: i64
+    y: i64
+    z: i64
+
 
 @verify
 def process_points(data: Buffer[Point3D]) -> None:
@@ -59,6 +66,7 @@ from lirien import verify, Tensor, f32, i64
 
 Shape = TypeVarTuple("Shape")
 
+
 @verify
 def get_rank(a: Tensor[f32, Unpack[Shape]]) -> i64:
     return len(Shape)
@@ -76,10 +84,12 @@ An `@adt` represents a tagged union of variants. Lirien compiles dispatch match 
 ```python
 from lirien import verify, i64, adt, Box
 
+
 @adt
 class Node:
     Cons: (i64, Box["Node"])
     Nil: None
+
 
 @verify
 def sum_list(n: Node) -> i64:
@@ -100,6 +110,7 @@ All operations (concatenation, slicing, indexing) are supported, and Z3 proves i
 ```python
 from lirien import verify, i64
 
+
 @verify
 def get_char(s: str, idx: i64) -> str:
     # Z3 proves the access is safe if the guards are met
@@ -118,15 +129,18 @@ Standard tuples and `NamedTuple` classes are recursively flattened into primitiv
 from typing import NamedTuple
 from lirien import verify, i64
 
+
 class Point(NamedTuple):
     x: i64
     y: i64
+
 
 @verify
 def scale_tuple(data: tuple[Point, i64]) -> Point:
     [p, factor] = data
     return Point(p.x * factor, p.y * factor)
-    
+
+
 # Lowered ABI representation:
 # Parameters: x: i64, y: i64, factor: i64
 # Returns:    new_x: i64, new_y: i64
@@ -142,9 +156,11 @@ Lirien compiles `TypedDict` variables down to the same flat memory layout as `@s
 from typing import TypedDict
 from lirien import verify, i64
 
+
 class Config(TypedDict):
     timeout: i64
     enabled: bool
+
 
 @verify
 def check(cfg: Config) -> i64:
@@ -163,11 +179,12 @@ def check(cfg: Config) -> i64:
 ```python
 from lirien import verify, List, i64
 
+
 @verify
 def build_and_index() -> i64:
     l = List[i64]()
     l.append(42)
-    return l[0] # Z3 verifies that index 0 is valid because size is 1
+    return l[0]  # Z3 verifies that index 0 is valid because size is 1
 ```
 
 ---
@@ -181,6 +198,7 @@ def build_and_index() -> i64:
 
 ```python
 from lirien import verify, SizedArray, i64
+
 
 @verify
 def strided_slice(arr: SizedArray[i64, 10]) -> i64:

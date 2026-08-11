@@ -189,28 +189,31 @@ pub fn verify_return_refinements<
                         };
 
                         if let Ok(expr) = res {
-                            t_ctx.backend.push();
-                            t_ctx.backend.assert(&path_cond);
-                            if let Some(exc_arr) = t_ctx.z3_arrays.get(&lirien_ir::ir::Value(0)) {
-                                let zero_idx = t_ctx.backend.int_from_i64(0);
-                                let exc_val = t_ctx.backend.array_select_bv(exc_arr, &zero_idx);
-                                let zero_bv = t_ctx.backend.bv_from_i64(0, 64);
-                                let exc_is_zero = t_ctx.backend.bv_eq(&exc_val, &zero_bv);
-                                t_ctx.backend.assert(&exc_is_zero);
+                            if t_ctx.backend.as_bool(&expr) != Some(true) {
+                                t_ctx.backend.push();
+                                t_ctx.backend.assert(&path_cond);
+                                if let Some(exc_arr) = t_ctx.z3_arrays.get(&lirien_ir::ir::Value(0))
+                                {
+                                    let zero_idx = t_ctx.backend.int_from_i64(0);
+                                    let exc_val = t_ctx.backend.array_select_bv(exc_arr, &zero_idx);
+                                    let zero_bv = t_ctx.backend.bv_from_i64(0, 64);
+                                    let exc_is_zero = t_ctx.backend.bv_eq(&exc_val, &zero_bv);
+                                    t_ctx.backend.assert(&exc_is_zero);
+                                }
+                                let __tmp = t_ctx.backend.bool_not(&expr);
+                                t_ctx.backend.assert(&__tmp);
+                                if t_ctx.backend.check()? {
+                                    let loc_info = inst
+                                        .location
+                                        .map(|l| format!(" at {}", l))
+                                        .unwrap_or_default();
+                                    return Err(format!(
+                                        "Return refinement violation: value of {:?} does not satisfy '{}' and may be violated on some reachable path{}.",
+                                        ret_val, ret_ref, loc_info
+                                    ));
+                                }
+                                t_ctx.backend.pop(1);
                             }
-                            let __tmp = t_ctx.backend.bool_not(&expr);
-                            t_ctx.backend.assert(&__tmp);
-                            if t_ctx.backend.check()? {
-                                let loc_info = inst
-                                    .location
-                                    .map(|l| format!(" at {}", l))
-                                    .unwrap_or_default();
-                                return Err(format!(
-                                    "Return refinement violation: value of {:?} does not satisfy '{}' and may be violated on some reachable path{}.",
-                                    ret_val, ret_ref, loc_info
-                                ));
-                            }
-                            t_ctx.backend.pop(1);
                         }
                     }
                 }

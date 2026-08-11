@@ -1,8 +1,8 @@
-from lirien import verify, Buffer, u8, u64
+from lirien import jit, Buffer, u8, u64
 from .primitives import hchacha20, chacha20_block, poly1305_mac_aead
 
 
-@verify
+@jit
 def xchacha20poly1305_encrypt(
     key: Buffer[u8],
     nonce: Buffer[u8],
@@ -43,7 +43,7 @@ def xchacha20poly1305_encrypt(
     poly1305_mac_aead(aad, ciphertext, otk, tag)
 
 
-@verify
+@jit
 def xchacha20poly1305_decrypt(
     key: Buffer[u8],
     nonce: Buffer[u8],

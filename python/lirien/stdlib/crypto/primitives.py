@@ -1,7 +1,7 @@
-from lirien import verify, Buffer, u8, u32, u64, i64
+from lirien import jit, Buffer, u8, u32, u64, i64
 
 
-@verify
+@jit
 def quarter_round(a: u32, b: u32, c: u32, d: u32) -> tuple[u32, u32, u32, u32]:
     a = a + b
     d = d ^ a
@@ -21,7 +21,7 @@ def quarter_round(a: u32, b: u32, c: u32, d: u32) -> tuple[u32, u32, u32, u32]:
     return a, b, c, d
 
 
-@verify
+@jit
 def load_u32_le(buf: Buffer[u8], offset: i64) -> u32:
     assert offset >= 0
     assert offset <= len(buf) - 4
@@ -33,7 +33,7 @@ def load_u32_le(buf: Buffer[u8], offset: i64) -> u32:
     )
 
 
-@verify
+@jit
 def store_u32_le(buf: Buffer[u8], offset: i64, val: u32) -> None:
     assert offset >= 0
     assert offset <= len(buf) - 4
@@ -43,7 +43,7 @@ def store_u32_le(buf: Buffer[u8], offset: i64, val: u32) -> None:
     buf[offset + 3] = u8((val >> 24) & 0xFF)
 
 
-@verify
+@jit
 def hchacha20(key: Buffer[u8], nonce: Buffer[u8], out_key: Buffer[u8]) -> None:
     assert len(key) == 32
     assert len(nonce) == 16
@@ -109,7 +109,7 @@ def hchacha20(key: Buffer[u8], nonce: Buffer[u8], out_key: Buffer[u8]) -> None:
     store_u32_le(out_key, 28, s15)
 
 
-@verify
+@jit
 def chacha20_block(
     key: Buffer[u8], counter: u64, nonce: Buffer[u8], block_out: Buffer[u8]
 ) -> None:
@@ -200,7 +200,7 @@ def chacha20_block(
     store_u32_le(block_out, 60, x15 + s15)
 
 
-@verify
+@jit
 def poly1305_process_block(
     b0: u64,
     b1: u64,
@@ -218,6 +218,7 @@ def poly1305_process_block(
     b13: u64,
     b14: u64,
     b15: u64,
+    hibit: u64,
     h0: u64,
     h1: u64,
     h2: u64,
@@ -238,7 +239,7 @@ def poly1305_process_block(
     m2 = ((b6 >> 4) | (b7 << 4) | (b8 << 12) | (b9 << 20)) & 0x3FFFFFF
     m3 = ((b9 >> 6) | (b10 << 2) | (b11 << 10) | (b12 << 18)) & 0x3FFFFFF
     m4 = (
-        (b12 >> 8) | (b13 << 0) | (b14 << 8) | (b15 << 16) | (u64(1) << 24)
+        (b12 >> 8) | (b13 << 0) | (b14 << 8) | (b15 << 16) | (hibit << 24)
     ) & 0x3FFFFFF
 
     h0 = h0 + m0
@@ -280,7 +281,7 @@ def poly1305_process_block(
     return h0, h1, h2, h3, h4
 
 
-@verify
+@jit
 def poly1305_mac_aead(
     aad: Buffer[u8],
     ciphertext: Buffer[u8],
@@ -330,25 +331,41 @@ def poly1305_mac_aead(
     h4 = u64(0)
 
     aad_len = len(aad)
-    num_aad_blocks = (aad_len + 15) // 16
-    for b in range(num_aad_blocks):
-        offset = b * 16
-        b0 = u64(aad[offset]) if offset < aad_len else u64(0)
-        b1 = u64(aad[offset + 1]) if offset + 1 < aad_len else u64(0)
-        b2 = u64(aad[offset + 2]) if offset + 2 < aad_len else u64(0)
-        b3 = u64(aad[offset + 3]) if offset + 3 < aad_len else u64(0)
-        b4 = u64(aad[offset + 4]) if offset + 4 < aad_len else u64(0)
-        b5 = u64(aad[offset + 5]) if offset + 5 < aad_len else u64(0)
-        b6 = u64(aad[offset + 6]) if offset + 6 < aad_len else u64(0)
-        b7 = u64(aad[offset + 7]) if offset + 7 < aad_len else u64(0)
-        b8 = u64(aad[offset + 8]) if offset + 8 < aad_len else u64(0)
-        b9 = u64(aad[offset + 9]) if offset + 9 < aad_len else u64(0)
-        b10 = u64(aad[offset + 10]) if offset + 10 < aad_len else u64(0)
-        b11 = u64(aad[offset + 11]) if offset + 11 < aad_len else u64(0)
-        b12 = u64(aad[offset + 12]) if offset + 12 < aad_len else u64(0)
-        b13 = u64(aad[offset + 13]) if offset + 13 < aad_len else u64(0)
-        b14 = u64(aad[offset + 14]) if offset + 14 < aad_len else u64(0)
-        b15 = u64(aad[offset + 15]) if offset + 15 < aad_len else u64(0)
+    offset = 0
+    while offset < aad_len:
+        i0 = offset
+        b0 = u64(aad[i0]) if i0 < aad_len else (u64(1) if i0 == aad_len else u64(0))
+        i1 = offset + 1
+        b1 = u64(aad[i1]) if i1 < aad_len else (u64(1) if i1 == aad_len else u64(0))
+        i2 = offset + 2
+        b2 = u64(aad[i2]) if i2 < aad_len else (u64(1) if i2 == aad_len else u64(0))
+        i3 = offset + 3
+        b3 = u64(aad[i3]) if i3 < aad_len else (u64(1) if i3 == aad_len else u64(0))
+        i4 = offset + 4
+        b4 = u64(aad[i4]) if i4 < aad_len else (u64(1) if i4 == aad_len else u64(0))
+        i5 = offset + 5
+        b5 = u64(aad[i5]) if i5 < aad_len else (u64(1) if i5 == aad_len else u64(0))
+        i6 = offset + 6
+        b6 = u64(aad[i6]) if i6 < aad_len else (u64(1) if i6 == aad_len else u64(0))
+        i7 = offset + 7
+        b7 = u64(aad[i7]) if i7 < aad_len else (u64(1) if i7 == aad_len else u64(0))
+        i8 = offset + 8
+        b8 = u64(aad[i8]) if i8 < aad_len else (u64(1) if i8 == aad_len else u64(0))
+        i9 = offset + 9
+        b9 = u64(aad[i9]) if i9 < aad_len else (u64(1) if i9 == aad_len else u64(0))
+        i10 = offset + 10
+        b10 = u64(aad[i10]) if i10 < aad_len else (u64(1) if i10 == aad_len else u64(0))
+        i11 = offset + 11
+        b11 = u64(aad[i11]) if i11 < aad_len else (u64(1) if i11 == aad_len else u64(0))
+        i12 = offset + 12
+        b12 = u64(aad[i12]) if i12 < aad_len else (u64(1) if i12 == aad_len else u64(0))
+        i13 = offset + 13
+        b13 = u64(aad[i13]) if i13 < aad_len else (u64(1) if i13 == aad_len else u64(0))
+        i14 = offset + 14
+        b14 = u64(aad[i14]) if i14 < aad_len else (u64(1) if i14 == aad_len else u64(0))
+        i15 = offset + 15
+        b15 = u64(aad[i15]) if i15 < aad_len else (u64(1) if i15 == aad_len else u64(0))
+        hibit = u64(1) if offset + 16 <= aad_len else u64(0)
 
         h0, h1, h2, h3, h4 = poly1305_process_block(
             b0,
@@ -367,6 +384,7 @@ def poly1305_mac_aead(
             b13,
             b14,
             b15,
+            hibit,
             h0,
             h1,
             h2,
@@ -382,27 +400,108 @@ def poly1305_mac_aead(
             r3_5,
             r4_5,
         )
+        offset = offset + 16
 
     ct_len = len(ciphertext)
-    num_ct_blocks = (ct_len + 15) // 16
-    for b in range(num_ct_blocks):
-        offset = b * 16
-        b0 = u64(ciphertext[offset]) if offset < ct_len else u64(0)
-        b1 = u64(ciphertext[offset + 1]) if offset + 1 < ct_len else u64(0)
-        b2 = u64(ciphertext[offset + 2]) if offset + 2 < ct_len else u64(0)
-        b3 = u64(ciphertext[offset + 3]) if offset + 3 < ct_len else u64(0)
-        b4 = u64(ciphertext[offset + 4]) if offset + 4 < ct_len else u64(0)
-        b5 = u64(ciphertext[offset + 5]) if offset + 5 < ct_len else u64(0)
-        b6 = u64(ciphertext[offset + 6]) if offset + 6 < ct_len else u64(0)
-        b7 = u64(ciphertext[offset + 7]) if offset + 7 < ct_len else u64(0)
-        b8 = u64(ciphertext[offset + 8]) if offset + 8 < ct_len else u64(0)
-        b9 = u64(ciphertext[offset + 9]) if offset + 9 < ct_len else u64(0)
-        b10 = u64(ciphertext[offset + 10]) if offset + 10 < ct_len else u64(0)
-        b11 = u64(ciphertext[offset + 11]) if offset + 11 < ct_len else u64(0)
-        b12 = u64(ciphertext[offset + 12]) if offset + 12 < ct_len else u64(0)
-        b13 = u64(ciphertext[offset + 13]) if offset + 13 < ct_len else u64(0)
-        b14 = u64(ciphertext[offset + 14]) if offset + 14 < ct_len else u64(0)
-        b15 = u64(ciphertext[offset + 15]) if offset + 15 < ct_len else u64(0)
+    offset_ct = 0
+    while offset_ct < ct_len:
+        ic0 = offset_ct
+        b0 = (
+            u64(ciphertext[ic0])
+            if ic0 < ct_len
+            else (u64(1) if ic0 == ct_len else u64(0))
+        )
+        ic1 = offset_ct + 1
+        b1 = (
+            u64(ciphertext[ic1])
+            if ic1 < ct_len
+            else (u64(1) if ic1 == ct_len else u64(0))
+        )
+        ic2 = offset_ct + 2
+        b2 = (
+            u64(ciphertext[ic2])
+            if ic2 < ct_len
+            else (u64(1) if ic2 == ct_len else u64(0))
+        )
+        ic3 = offset_ct + 3
+        b3 = (
+            u64(ciphertext[ic3])
+            if ic3 < ct_len
+            else (u64(1) if ic3 == ct_len else u64(0))
+        )
+        ic4 = offset_ct + 4
+        b4 = (
+            u64(ciphertext[ic4])
+            if ic4 < ct_len
+            else (u64(1) if ic4 == ct_len else u64(0))
+        )
+        ic5 = offset_ct + 5
+        b5 = (
+            u64(ciphertext[ic5])
+            if ic5 < ct_len
+            else (u64(1) if ic5 == ct_len else u64(0))
+        )
+        ic6 = offset_ct + 6
+        b6 = (
+            u64(ciphertext[ic6])
+            if ic6 < ct_len
+            else (u64(1) if ic6 == ct_len else u64(0))
+        )
+        ic7 = offset_ct + 7
+        b7 = (
+            u64(ciphertext[ic7])
+            if ic7 < ct_len
+            else (u64(1) if ic7 == ct_len else u64(0))
+        )
+        ic8 = offset_ct + 8
+        b8 = (
+            u64(ciphertext[ic8])
+            if ic8 < ct_len
+            else (u64(1) if ic8 == ct_len else u64(0))
+        )
+        ic9 = offset_ct + 9
+        b9 = (
+            u64(ciphertext[ic9])
+            if ic9 < ct_len
+            else (u64(1) if ic9 == ct_len else u64(0))
+        )
+        ic10 = offset_ct + 10
+        b10 = (
+            u64(ciphertext[ic10])
+            if ic10 < ct_len
+            else (u64(1) if ic10 == ct_len else u64(0))
+        )
+        ic11 = offset_ct + 11
+        b11 = (
+            u64(ciphertext[ic11])
+            if ic11 < ct_len
+            else (u64(1) if ic11 == ct_len else u64(0))
+        )
+        ic12 = offset_ct + 12
+        b12 = (
+            u64(ciphertext[ic12])
+            if ic12 < ct_len
+            else (u64(1) if ic12 == ct_len else u64(0))
+        )
+        ic13 = offset_ct + 13
+        b13 = (
+            u64(ciphertext[ic13])
+            if ic13 < ct_len
+            else (u64(1) if ic13 == ct_len else u64(0))
+        )
+        ic14 = offset_ct + 14
+        b14 = (
+            u64(ciphertext[ic14])
+            if ic14 < ct_len
+            else (u64(1) if ic14 == ct_len else u64(0))
+        )
+        ic15 = offset_ct + 15
+        b15 = (
+            u64(ciphertext[ic15])
+            if ic15 < ct_len
+            else (u64(1) if ic15 == ct_len else u64(0))
+        )
+        hibit = u64(1) if offset_ct + 16 <= ct_len else u64(0)
 
         h0, h1, h2, h3, h4 = poly1305_process_block(
             b0,
@@ -421,6 +520,7 @@ def poly1305_mac_aead(
             b13,
             b14,
             b15,
+            hibit,
             h0,
             h1,
             h2,
@@ -436,6 +536,7 @@ def poly1305_mac_aead(
             r3_5,
             r4_5,
         )
+        offset_ct = offset_ct + 16
 
     l0 = u64(aad_len & 0xFF)
     l1 = u64((aad_len >> 8) & 0xFF)
@@ -472,6 +573,7 @@ def poly1305_mac_aead(
         l13,
         l14,
         l15,
+        u64(1),
         h0,
         h1,
         h2,

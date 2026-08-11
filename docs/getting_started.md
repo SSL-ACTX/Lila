@@ -74,16 +74,18 @@ from lirien import verify, i64, Refined, V
 # Define a refinement type: an integer strictly greater than zero
 Positive = Refined[i64, V > 0]
 
+
 @verify
 def divide(n: i64, d: Positive) -> i64:
     # Z3 formally proves at compile-time that 'd > 0' holds.
     # A ZeroDivisionError is mathematically impossible in native code.
     return n // d
 
+
 if __name__ == "__main__":
     # Successful execution (compiled to native JIT code bypasses interpreter)
     print("100 / 5 =", divide(100, 5))
-    
+
     try:
         # This will fail compilation at import/load time because 0 is not positive!
         print("100 / 0 =", divide(100, 0))

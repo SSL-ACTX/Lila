@@ -336,21 +336,23 @@ pub fn verify_call_arguments<
                             };
 
                             if let Ok(expr) = res {
-                                t_ctx.backend.push();
-                                t_ctx.backend.assert(&path_cond);
-                                let __tmp = t_ctx.backend.bool_not(&expr);
-                                t_ctx.backend.assert(&__tmp);
-                                if t_ctx.backend.check()? {
-                                    let loc_info = inst
-                                        .location
-                                        .map(|l| format!(" at {}", l))
-                                        .unwrap_or_default();
-                                    return Err(format!(
-                                        "Argument refinement violation for function '{}' (arg {}): value of {:?} does not satisfy '{}' and may be violated on some reachable path{}.",
-                                        target_name, i, arg_val, ref_str, loc_info
-                                    ));
+                                if t_ctx.backend.as_bool(&expr) != Some(true) {
+                                    t_ctx.backend.push();
+                                    t_ctx.backend.assert(&path_cond);
+                                    let __tmp = t_ctx.backend.bool_not(&expr);
+                                    t_ctx.backend.assert(&__tmp);
+                                    if t_ctx.backend.check()? {
+                                        let loc_info = inst
+                                            .location
+                                            .map(|l| format!(" at {}", l))
+                                            .unwrap_or_default();
+                                        return Err(format!(
+                                             "Argument refinement violation for function '{}' (arg {}): value of {:?} does not satisfy '{}' and may be violated on some reachable path{}.",
+                                             target_name, i, arg_val, ref_str, loc_info
+                                         ));
+                                    }
+                                    t_ctx.backend.pop(1);
                                 }
-                                t_ctx.backend.pop(1);
                             }
                         }
                     }
@@ -382,23 +384,25 @@ pub fn verify_call_arguments<
                         if let Ok(expr) =
                             parse_bool_expr_with_resolver(&substituted_prec, &resolver)
                         {
-                            t_ctx.backend.push();
-                            t_ctx.backend.assert(&path_cond);
-                            let __tmp = t_ctx.backend.bool_not(&expr);
-                            t_ctx.backend.assert(&__tmp);
-                            if t_ctx.backend.check()? {
-                                let loc_info = inst
-                                    .location
-                                    .map(|l| format!(" at {}", l))
-                                    .unwrap_or_default();
-                                let msg_suffix =
-                                    custom_msg.map(|m| format!(" ({})", m)).unwrap_or_default();
-                                return Err(format!(
-                                    "Precondition violation for call to '{}': precondition '{}'{} may be violated on some reachable path{}.",
-                                    target_name, clean_prec, msg_suffix, loc_info
-                                ));
+                            if t_ctx.backend.as_bool(&expr) != Some(true) {
+                                t_ctx.backend.push();
+                                t_ctx.backend.assert(&path_cond);
+                                let __tmp = t_ctx.backend.bool_not(&expr);
+                                t_ctx.backend.assert(&__tmp);
+                                if t_ctx.backend.check()? {
+                                    let loc_info = inst
+                                        .location
+                                        .map(|l| format!(" at {}", l))
+                                        .unwrap_or_default();
+                                    let msg_suffix =
+                                        custom_msg.map(|m| format!(" ({})", m)).unwrap_or_default();
+                                    return Err(format!(
+                                        "Precondition violation for call to '{}': precondition '{}'{} may be violated on some reachable path{}.",
+                                        target_name, clean_prec, msg_suffix, loc_info
+                                    ));
+                                }
+                                t_ctx.backend.pop(1);
                             }
-                            t_ctx.backend.pop(1);
                         }
                     }
                 }

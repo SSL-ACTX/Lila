@@ -67,7 +67,7 @@ pub fn lower<M: Module>(
         return Ok(());
     }
 
-    let mut arg_types = Vec::new();
+    let mut arg_types = vec![SsaType::Pointer(Box::new(SsaType::I64))];
     for arg in args {
         arg_types.push(ctx.ssa_func.get_type(*arg));
     }
@@ -98,6 +98,11 @@ pub fn lower<M: Module>(
         sret_slot = Some(slot);
     }
 
+    let exc_ptr = ctx
+        .builder
+        .block_params(ctx.blocks[&ctx.ssa_func.entry_block])[0];
+    arg_vals.push(exc_ptr);
+
     for arg in args {
         arg_vals.extend(get_all_cl_values(ctx, arg));
     }
@@ -112,6 +117,9 @@ pub fn lower<M: Module>(
         ctx.values.insert(dest, addr);
     } else if is_register_composite_ret {
         let res_vals = ctx.builder.inst_results(call).to_vec();
+        if !res_vals.is_empty() {
+            ctx.values.insert(dest, res_vals[0]);
+        }
         ctx.unpacked_values.insert(dest, res_vals);
     } else if ret_ty != SsaType::Unknown {
         let res = ctx.builder.inst_results(call)[0];

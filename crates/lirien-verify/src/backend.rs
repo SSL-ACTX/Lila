@@ -24,6 +24,9 @@ pub trait SolverBackend {
     /// Returns an error string if solver times out or encounters a backend failure.
     fn check(&mut self) -> Result<bool, String>;
 
+    /// Statically evaluates a boolean expression (if it is a constant).
+    fn as_bool(&self, val: &Self::Bool) -> Option<bool>;
+
     /// Sets the solver timeout in milliseconds.
     fn set_timeout(&mut self, timeout_ms: u32);
 

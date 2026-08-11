@@ -104,11 +104,6 @@ impl CFGBuilder {
         let asserts_post = extract_postconditions(&s.body, &param_map, &self.func.struct_layouts);
         self.func.postconditions.extend(asserts_post);
 
-        println!("[DEBUG] s.body size for {}: {}", s.name.as_str(), s.body.len());
-        for (idx, stmt) in s.body.iter().enumerate() {
-            println!("[DEBUG]   stmt {}: {:?}", idx, stmt);
-        }
-
         // Process function assert preconditions at the top
         let mut body_iter = s.body.iter().peekable();
         while let Some(stmt) = body_iter.peek() {
@@ -143,7 +138,10 @@ impl CFGBuilder {
                         self.func.preconditions.push(pred_to_push);
                     }
                     Err(e) => {
-                        eprintln!("[DEBUG] expr_to_string failed for precondition assert: {:?}", e);
+                        eprintln!(
+                            "[DEBUG] expr_to_string failed for precondition assert: {:?}",
+                            e
+                        );
                     }
                 }
                 body_iter.next();

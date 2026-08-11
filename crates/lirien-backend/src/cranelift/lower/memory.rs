@@ -1,4 +1,4 @@
-use super::{get_len, get_val, translate_type, CodegenContext, LoweringError};
+use super::{get_len, get_val, get_val_with_ctx, translate_type, CodegenContext, LoweringError};
 use cranelift::codegen::ir::{BlockArg, MemFlagsData};
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
@@ -380,16 +380,15 @@ pub fn lower<M: Module>(
             ctx.values.insert(*dest, list_ptr);
         }
         InstructionKind::BufferLoad(dest, buf, idx) => {
-            let buf_ptr = get_val(&ctx.values, buf);
-            let idx_val = get_val(&ctx.values, idx);
+            let buf_ptr = get_val_with_ctx(ctx, buf);
+            let idx_val = get_val_with_ctx(ctx, idx);
             let dest_ty = ctx.ssa_func.get_type(*dest);
             let elem_size = match &ctx.ssa_func.get_type(*buf) {
                 SsaType::Buffer(inner) => inner.size(&ctx.ssa_func.struct_layouts),
                 _ => 8,
             };
-            let offset = ctx.builder.ins().imul_imm(idx_val, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(idx_val, elem_size as i64);
             let addr = ctx.builder.ins().iadd(buf_ptr, offset);
-
             if dest_ty.is_composite() {
                 ctx.values.insert(*dest, addr);
             } else {
@@ -399,13 +398,13 @@ pub fn lower<M: Module>(
             }
         }
         InstructionKind::BufferStore(dest, buf, idx, val, _ty) => {
-            let buf_ptr = get_val(&ctx.values, buf);
-            let idx_val = get_val(&ctx.values, idx);
+            let buf_ptr = get_val_with_ctx(ctx, buf);
+            let idx_val = get_val_with_ctx(ctx, idx);
             let elem_size = match &ctx.ssa_func.get_type(*buf) {
                 SsaType::Buffer(inner) => inner.size(&ctx.ssa_func.struct_layouts),
                 _ => 8,
             };
-            let offset = ctx.builder.ins().imul_imm(idx_val, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(idx_val, elem_size as i64);
             let addr = ctx.builder.ins().iadd(buf_ptr, offset);
 
             super::store_to_memory(ctx, *val, addr, 0);
@@ -437,7 +436,7 @@ pub fn lower<M: Module>(
                 _ => 4, // Default to float (4 bytes)
             };
 
-            let offset = ctx.builder.ins().imul_imm(flat_idx, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(flat_idx, elem_size as i64);
             let addr = ctx.builder.ins().iadd(tensor_ptr, offset);
 
             if dest_ty.is_composite() {
@@ -465,7 +464,7 @@ pub fn lower<M: Module>(
             };
             let elem_size = inner_ty.size(&ctx.ssa_func.struct_layouts);
 
-            let offset = ctx.builder.ins().imul_imm(flat_idx, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(flat_idx, elem_size as i64);
             let addr = ctx.builder.ins().iadd(tensor_ptr, offset);
 
             if inner_ty.is_composite() {
@@ -621,7 +620,7 @@ pub fn lower<M: Module>(
 
             ctx.builder.switch_to_block(loop_body_block);
             let res_val = eval_fused_expr(&mut ctx.builder, &ctx.values, idx, expr);
-            let offset = ctx.builder.ins().imul_imm(idx, 4);
+            let offset = ctx.builder.ins().imul_imm_s(idx, 4);
             let addr = ctx.builder.ins().iadd(dest_ptr, offset);
             ctx.builder
                 .ins()
@@ -676,7 +675,7 @@ pub fn lower<M: Module>(
                 idx_val
             };
 
-            let offset = ctx.builder.ins().imul_imm(scaled_idx, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(scaled_idx, elem_size as i64);
             let addr = ctx.builder.ins().iadd(arr_ptr, offset);
 
             if dest_ty.is_composite() {
@@ -702,7 +701,7 @@ pub fn lower<M: Module>(
                 idx_val
             };
 
-            let offset = ctx.builder.ins().imul_imm(scaled_idx, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(scaled_idx, elem_size as i64);
             let addr = ctx.builder.ins().iadd(arr_ptr, offset);
 
             super::store_to_memory(ctx, *val, addr, 0);
@@ -718,9 +717,15 @@ pub fn lower<M: Module>(
                 }
                 _ => 8,
             };
-            let offset = ctx.builder.ins().imul_imm(idx_val, elem_size as i64);
+            let offset = ctx.builder.ins().imul_imm_s(idx_val, elem_size as i64);
             let addr = ctx.builder.ins().iadd(arr_ptr, offset);
             ctx.values.insert(*dest, addr);
+            if matches!(ctx.ssa_func.get_type(*arr).base_type(), SsaType::Buffer(_)) {
+                if let Some(&parent_len) = ctx.buffer_lengths.get(arr) {
+                    let slice_len = ctx.builder.ins().isub(parent_len, idx_val);
+                    ctx.buffer_lengths.insert(*dest, slice_len);
+                }
+            }
             // Propagate stride from parent if it existed, then multiply by this slice's step
             let parent_stride = ctx.array_strides.get(arr).copied();
             let effective_stride = if let Some(ps) = parent_stride {
@@ -732,7 +737,7 @@ pub fn lower<M: Module>(
         }
         InstructionKind::StructCreate(dest, struct_name, args) => {
             let dest_ty = ctx.ssa_func.get_type(*dest);
-            if let SsaType::NamedTuple(_) = dest_ty {
+            if matches!(dest_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
                 let mut field_vals = Vec::new();
                 for arg in args {
                     field_vals.extend(super::get_all_cl_values(ctx, arg));
@@ -774,7 +779,7 @@ pub fn lower<M: Module>(
         }
         InstructionKind::StructLoad(dest, obj, offset) => {
             let obj_ty = ctx.ssa_func.get_type(*obj);
-            if let SsaType::NamedTuple(_) = obj_ty {
+            if matches!(obj_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
                 let mut current_offset = 0;
                 let mut val_idx = 0;
                 let dest_ty = ctx.ssa_func.get_type(*dest);
@@ -799,7 +804,7 @@ pub fn lower<M: Module>(
                 }
                 return Err(LoweringError::General(
                     format!(
-                        "Field offset {} (count {}) not found in NamedTuple {:?}",
+                        "Field offset {} (count {}) not found in Tuple/NamedTuple {:?}",
                         offset, expected_count, obj_ty
                     ),
                     None,
@@ -809,7 +814,7 @@ pub fn lower<M: Module>(
             let obj_ptr = get_val(&ctx.values, obj);
             let dest_ty = ctx.ssa_func.get_type(*dest);
             if dest_ty.is_composite() {
-                let res = ctx.builder.ins().iadd_imm(obj_ptr, *offset as i64);
+                let res = ctx.builder.ins().iadd_imm_s(obj_ptr, *offset as i64);
                 ctx.values.insert(*dest, res);
             } else {
                 let cl_ty = translate_type(&dest_ty);
@@ -822,12 +827,12 @@ pub fn lower<M: Module>(
         }
         InstructionKind::StructOffset(dest, obj, offset) => {
             let obj_ptr = get_val(&ctx.values, obj);
-            let res = ctx.builder.ins().iadd_imm(obj_ptr, *offset as i64);
+            let res = ctx.builder.ins().iadd_imm_s(obj_ptr, *offset as i64);
             ctx.values.insert(*dest, res);
         }
         InstructionKind::StructSet(dest, obj, offset, val, _ty) => {
             let obj_ty = ctx.ssa_func.get_type(*obj);
-            if let SsaType::NamedTuple(_) = obj_ty {
+            if matches!(obj_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
                 let mut current_offset = 0;
                 let mut val_idx = 0;
                 let val_ty = ctx.ssa_func.get_type(*val);
@@ -851,7 +856,7 @@ pub fn lower<M: Module>(
                 }
                 return Err(LoweringError::General(
                     format!(
-                        "Field offset {} (count {}) not found in NamedTuple {:?}",
+                        "Field offset {} (count {}) not found in Tuple/NamedTuple {:?}",
                         offset, expected_count, obj_ty
                     ),
                     None,
@@ -972,7 +977,7 @@ pub fn lower<M: Module>(
             let mut offset = 1;
             offset = (offset + max_align - 1) & !(max_align - 1);
 
-            let addr = ctx.builder.ins().iadd_imm(obj_ptr, offset as i64);
+            let addr = ctx.builder.ins().iadd_imm_s(obj_ptr, offset as i64);
             let payload_ty = &variants[*tag_idx].1;
             if payload_ty.is_composite() {
                 ctx.values.insert(*dest, addr);
@@ -996,6 +1001,9 @@ pub fn lower<M: Module>(
             let call = ctx.builder.ins().call(local_callee, &[size_val]);
             let res = ctx.builder.inst_results(call)[0];
             ctx.values.insert(*dest, res);
+            if matches!(ty.base_type(), SsaType::Buffer(_)) {
+                ctx.buffer_lengths.insert(*dest, size_val);
+            }
         }
         InstructionKind::PointerLoad(dest, ptr) => {
             let ptr_val = get_val(&ctx.values, ptr);
@@ -1019,7 +1027,7 @@ pub fn lower<M: Module>(
             let dest_ty = ctx.ssa_func.get_type(*dest);
             if dest_ty.is_composite() {
                 // For a composite structure at offset, add the offset to the base pointer
-                let res = ctx.builder.ins().iadd_imm(ptr_val, *offset as i64);
+                let res = ctx.builder.ins().iadd_imm_s(ptr_val, *offset as i64);
                 ctx.values.insert(*dest, res);
             } else {
                 let cl_ty = translate_type(&dest_ty);
@@ -1057,7 +1065,7 @@ fn eval_fused_expr(
     match expr {
         lirien_ir::ir::FusedExpr::Input(val) => {
             let t_ptr = values.get(val).copied().unwrap();
-            let offset = builder.ins().imul_imm(idx, 4);
+            let offset = builder.ins().imul_imm_s(idx, 4);
             let addr = builder.ins().iadd(t_ptr, offset);
             builder.ins().load(types::F32, MemFlagsData::new(), addr, 0)
         }

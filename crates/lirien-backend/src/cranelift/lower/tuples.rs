@@ -34,7 +34,6 @@ pub fn lower<M: Module>(
             }
 
             let ptr_ty = ctx.module.target_config().pointer_type();
-            eprintln!("[DEBUG] tuples stack_addr pointer type: {:?}", ptr_ty);
             let addr = ctx.builder.ins().stack_addr(ptr_ty, slot, 0);
             ctx.values.insert(*dest, addr);
             ctx.unpacked_values.insert(*dest, all_flat_vals);
@@ -58,13 +57,14 @@ pub fn lower<M: Module>(
                         ctx.unpacked_values.insert(*dest, slice);
                     } else {
                         ctx.values.insert(*dest, slice[0]);
+                        ctx.unpacked_values.insert(*dest, slice);
                     }
                     return Ok(());
                 }
             }
 
             // Fallback: handle extraction from memory-allocated tuples
-            let tuple_addr = get_val(&ctx.values, tuple_val);
+            let tuple_addr = super::get_val_with_ctx(ctx, tuple_val);
             if let lirien_ir::ir::Type::Tuple(elt_types) = tuple_ty {
                 let mut offset = 0;
                 for elt_ty in elt_types.iter().take(*idx) {
@@ -77,7 +77,7 @@ pub fn lower<M: Module>(
                 offset = (offset + dest_align - 1) & !(dest_align - 1);
 
                 if dest_ty.is_composite() {
-                    let res = ctx.builder.ins().iadd_imm(tuple_addr, offset as i64);
+                    let res = ctx.builder.ins().iadd_imm_s(tuple_addr, offset as i64);
                     ctx.values.insert(*dest, res);
                 } else {
                     let cl_ty = super::translate_type(dest_ty);

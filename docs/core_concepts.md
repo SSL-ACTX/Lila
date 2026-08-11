@@ -22,16 +22,20 @@ from lirien import verify, i64, Refined
 Positive = Refined[i64, lambda x: x > 0]
 Positive = Annotated[i64, lambda x: x > 0]
 
+
 @verify
 def divide_verified(n: i64, d: Positive) -> i64:
     # Z3 proves 'd > 0' holds. ZeroDivisionError is statically impossible.
     return n // d
 
+
 @verify
 def clamp(x: i64) -> Refined[i64, ...]:
     # Lirien infers the postcondition: (and (>= {v} 1) (<= {v} 10))
-    if x > 10: return 10
-    if x < 1: return 1
+    if x > 10:
+        return 10
+    if x < 1:
+        return 1
     return x
 ```
 
@@ -49,6 +53,7 @@ Positive = Refined[i64, V > 0]
 
 # Complex predicate: in [1, 100] and odd
 BoundedOdd = Refined[i64, (V >= 1) & (V <= 100) & (V % 2 != 0)]
+
 
 @verify
 def next_odd(n: BoundedOdd) -> Refined[i64, V > 0]:
@@ -73,16 +78,18 @@ Lirien promotes standard Python `assert` statements to static theorem proofs.
 ```python
 from lirien import verify, i64
 
+
 @verify
 def add_one(x: i64) -> i64:
     # 1. Precondition
     assert 0 < x < 100, "x must be between 0 and 100"
-    
+
     res = x + 1
-    
+
     # 2. Postcondition
     assert res > x, "result must be greater than input"
     return res
+
 
 @verify
 def sum_to_n(n: i64) -> i64:
@@ -110,6 +117,7 @@ from lirien import verify, i64, Refined
 SmallPos = Refined[i64, lambda x: (0 <= x) & (x <= 20)]
 StrictPositive = Refined[i64, lambda x: x >= 1]
 
+
 @verify
 def factorial(n: SmallPos) -> StrictPositive:
     if n <= 1:
@@ -126,6 +134,7 @@ Lirien supports closures and lambdas with compile-time capture analysis. The cap
 
 ```python
 from lirien import verify, i64, Closure
+
 
 @verify
 def make_adder(x: i64) -> Closure[[i64], i64]:

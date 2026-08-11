@@ -102,11 +102,13 @@ impl<'ctx> SolverBackend for Z3Backend<'ctx> {
                     .solver
                     .get_reason_unknown()
                     .unwrap_or_else(|| "unknown".to_string());
-                let solver_str = self.solver.to_string();
-                eprintln!("[DEBUG] Z3 Solver state on Unknown:\n{}", solver_str);
                 Err(format!("Z3 returned Unknown: {}", reason))
             }
         }
+    }
+
+    fn as_bool(&self, val: &Self::Bool) -> Option<bool> {
+        val.as_bool()
     }
 
     fn set_timeout(&mut self, timeout_ms: u32) {

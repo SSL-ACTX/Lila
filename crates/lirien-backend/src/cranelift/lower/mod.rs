@@ -19,7 +19,7 @@ pub use signature::{build_cranelift_signature, get_field_info, get_flattened_typ
 pub use storage::{
     copy_memory, copy_to_stack, store_recursive, store_to_memory, store_to_stack, StorageDest,
 };
-pub use utils::{get_all_cl_values, get_len, get_val};
+pub use utils::{get_all_cl_values, get_len, get_val, get_val_with_ctx};
 
 pub fn lower_instruction<M: Module>(
     ctx: &mut CodegenContext<M>,
@@ -83,21 +83,37 @@ fn lower_instruction_internal<M: Module>(
         }
         InstructionKind::Assign(dest, src) => {
             let ty = ctx.ssa_func.get_type(*dest);
-            if let lirien_ir::ir::Type::NamedTuple(_) = ty {
-                let s_vals = ctx.unpacked_values.get(src).unwrap().clone();
-                ctx.unpacked_values.insert(*dest, s_vals);
+            if matches!(
+                ty,
+                lirien_ir::ir::Type::NamedTuple(_) | lirien_ir::ir::Type::Tuple(_)
+            ) {
+                if let Some(s_vals) = ctx.unpacked_values.get(src).cloned() {
+                    if !s_vals.is_empty() {
+                        ctx.values.insert(*dest, s_vals[0]);
+                    }
+                    ctx.unpacked_values.insert(*dest, s_vals);
+                }
+            }
+            let s = get_val_with_ctx(ctx, src);
+            let target_cl_ty = super::translate_type(&ty);
+            let current_cl_ty = ctx.builder.func.dfg.value_type(s);
+            let adjusted_s = if current_cl_ty != target_cl_ty {
+                if target_cl_ty.bits() < current_cl_ty.bits() {
+                    ctx.builder.ins().ireduce(target_cl_ty, s)
+                } else {
+                    ctx.builder.ins().uextend(target_cl_ty, s)
+                }
             } else {
-                let s = get_val(&ctx.values, src);
-                ctx.values.insert(*dest, s);
-                // Also handle Buffer/Tensor metadata if needed
-                if let Some(len) = ctx.buffer_lengths.get(src) {
-                    let l = *len;
-                    ctx.buffer_lengths.insert(*dest, l);
-                }
-                if let Some(dims) = ctx.tensor_dims.get(src) {
-                    let d = dims.clone();
-                    ctx.tensor_dims.insert(*dest, d);
-                }
+                s
+            };
+            ctx.values.insert(*dest, adjusted_s);
+            if let Some(len) = ctx.buffer_lengths.get(src) {
+                let l = *len;
+                ctx.buffer_lengths.insert(*dest, l);
+            }
+            if let Some(dims) = ctx.tensor_dims.get(src) {
+                let d = dims.clone();
+                ctx.tensor_dims.insert(*dest, d);
             }
             Ok(())
         }

@@ -66,9 +66,5 @@ pub fn transform(
     result.extend(lambdas);
     result.push(main_func);
 
-    for func in &result {
-        func.dump();
-    }
-
     Ok(result)
 }

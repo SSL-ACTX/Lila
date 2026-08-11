@@ -53,12 +53,14 @@ from lirien import verify, i64, Refined, V
 # A refinement type: an integer strictly greater than zero
 Positive = Refined[i64, V > 0]
 
+
 @verify
 def divide_verified(n: i64, d: Positive) -> i64:
     # Z3 proves 'd > 0' holds. ZeroDivisionError is statically impossible.
     return n // d
 
-print(divide_verified(100, 5)) # Executed in native JIT-compiled machine code
+
+print(divide_verified(100, 5))  # Executed in native JIT-compiled machine code
 ```
 
 ---

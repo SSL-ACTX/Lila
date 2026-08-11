@@ -258,22 +258,53 @@ pub fn verify_with_context<
 
     // Run deferred safety checks
     for check in &t_ctx.safety_checks {
-        t_ctx.backend.push();
-        t_ctx.backend.assert(&check.path_cond);
-        t_ctx.backend.assert(&check.violation_cond);
-        if t_ctx.backend.check()? {
-            let counterexample = get_counterexample_string(&t_ctx);
-            let loc_info = check
-                .location
-                .map(|l| format!(" at {}", l))
-                .unwrap_or_default();
-            t_ctx.backend.pop(1);
-            return Err(format!(
-                "{}{}{}",
-                check.error_message, counterexample, loc_info
-            ));
+        let mut simple_verified = false;
+        if let Some(simple_slv) = z3::Solver::new_for_logic("QF_ABV") {
+            let simple_slv = std::mem::ManuallyDrop::new(simple_slv);
+
+            let path_cond_str = format!("{:?}", check.path_cond);
+            let mut resolved_path_cond = check.path_cond.clone();
+            if let Some(block_id) = parse_block_id(&path_cond_str) {
+                let mut visited_blocks = std::collections::HashSet::new();
+                resolved_path_cond = get_concrete_path_cond(&t_ctx, block_id, &mut visited_blocks);
+            }
+
+            simple_slv.assert(&resolved_path_cond);
+            simple_slv.assert(&check.violation_cond);
+
+            let mut referenced_vals = std::collections::HashSet::new();
+            extract_values(&check.error_message, &mut referenced_vals);
+            extract_values(&format!("{:?}", resolved_path_cond), &mut referenced_vals);
+            extract_values(&format!("{:?}", check.violation_cond), &mut referenced_vals);
+
+            let mut visited = std::collections::HashSet::new();
+            for val in referenced_vals {
+                assert_def_recursive(&t_ctx, val, &simple_slv, &mut visited);
+            }
+
+            if simple_slv.check() == z3::SatResult::Unsat {
+                simple_verified = true;
+            }
         }
-        t_ctx.backend.pop(1);
+
+        if !simple_verified {
+            t_ctx.backend.push();
+            t_ctx.backend.assert(&check.path_cond);
+            t_ctx.backend.assert(&check.violation_cond);
+            if t_ctx.backend.check()? {
+                let counterexample = get_counterexample_string(&t_ctx);
+                let loc_info = check
+                    .location
+                    .map(|l| format!(" at {}", l))
+                    .unwrap_or_default();
+                t_ctx.backend.pop(1);
+                return Err(format!(
+                    "{}{}{}",
+                    check.error_message, counterexample, loc_info
+                ));
+            }
+            t_ctx.backend.pop(1);
+        }
     }
 
     returns::verify_return_refinements(&mut t_ctx)?;
@@ -310,16 +341,6 @@ fn translate_instructions<
 >(
     t_ctx: &mut TranslationContext<'_, B>,
 ) -> Result<(), String> {
-    eprintln!(
-        "[DEBUG] translate_instructions for function: {}",
-        t_ctx.func.name
-    );
-    for block in &t_ctx.func.blocks {
-        eprintln!("[DEBUG]   block id: {:?}", block.id);
-        for inst in &block.instructions {
-            eprintln!("[DEBUG]     inst kind: {:?}", inst.kind);
-        }
-    }
     tracing::info!(target: "lirien::verify::verifier", "Translating instructions for '{}'...", t_ctx.func.name);
     for block in &t_ctx.func.blocks {
         let path_cond = t_ctx.block_conditions.get(&block.id).unwrap().clone();
@@ -588,7 +609,6 @@ pub fn assert_preconditions<
                 prec.as_str()
             };
             let z3_prec = parse_bool_expr_with_resolver(clean_prec, &resolver)?;
-            eprintln!("[DEBUG] assert_preconditions: prec = {}, parsed to Z3 successfully", clean_prec);
             let assume_prec = t_ctx.backend.bool_implies(&path_cond, &z3_prec);
             t_ctx.backend.assert(&assume_prec);
         }
@@ -756,4 +776,243 @@ fn substitute_var(s: &str, from: &str, to: &str) -> String {
         i += 1;
     }
     result
+}
+
+fn extract_values(s: &str, set: &mut std::collections::HashSet<Value>) {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'v' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > start {
+                if let Ok(id) = s[start..end].parse::<usize>() {
+                    set.insert(Value(id));
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn assert_def_recursive<
+    B: SolverBackend<
+        Bool = z3::ast::Bool,
+        Int = z3::ast::Int,
+        Float = z3::ast::Float,
+        BV = z3::ast::BV,
+        Array = z3::ast::Array,
+    >,
+>(
+    ctx: &TranslationContext<'_, B>,
+    val: Value,
+    simple_slv: &z3::Solver,
+    visited: &mut std::collections::HashSet<Value>,
+) {
+    if !visited.insert(val) {
+        return;
+    }
+
+    if let Some(inst_kind) = control_flow::get_cached_instruction(ctx, val) {
+        match inst_kind {
+            InstructionKind::ConstInt(dest, v) => {
+                if let Some(z3_dest) = ctx.z3_bvs.get(&dest) {
+                    let z3_val = z3::ast::BV::from_i64(v, z3_dest.get_size());
+                    simple_slv.assert(&z3_dest.eq(&z3_val));
+                }
+            }
+            InstructionKind::Assign(dest, src) => {
+                if let (Some(z3_dest), Some(z3_src)) = (ctx.z3_bvs.get(&dest), ctx.z3_bvs.get(&src))
+                {
+                    simple_slv.assert(&z3_dest.eq(z3_src));
+                }
+                assert_def_recursive(ctx, src, simple_slv, visited);
+            }
+            InstructionKind::Add(dest, lhs, rhs) => {
+                if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
+                    ctx.z3_bvs.get(&dest),
+                    ctx.z3_bvs.get(&lhs),
+                    ctx.z3_bvs.get(&rhs),
+                ) {
+                    simple_slv.assert(&z3_dest.eq(&z3_l.bvadd(z3_r)));
+                }
+                assert_def_recursive(ctx, lhs, simple_slv, visited);
+                assert_def_recursive(ctx, rhs, simple_slv, visited);
+            }
+            InstructionKind::Sub(dest, lhs, rhs) => {
+                if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
+                    ctx.z3_bvs.get(&dest),
+                    ctx.z3_bvs.get(&lhs),
+                    ctx.z3_bvs.get(&rhs),
+                ) {
+                    simple_slv.assert(&z3_dest.eq(&z3_l.bvsub(z3_r)));
+                }
+                assert_def_recursive(ctx, lhs, simple_slv, visited);
+                assert_def_recursive(ctx, rhs, simple_slv, visited);
+            }
+            InstructionKind::SLt(dest, lhs, rhs)
+            | InstructionKind::SLe(dest, lhs, rhs)
+            | InstructionKind::SGt(dest, lhs, rhs)
+            | InstructionKind::SGe(dest, lhs, rhs)
+            | InstructionKind::ULt(dest, lhs, rhs)
+            | InstructionKind::ULe(dest, lhs, rhs)
+            | InstructionKind::UGt(dest, lhs, rhs)
+            | InstructionKind::UGe(dest, lhs, rhs)
+            | InstructionKind::Eq(dest, lhs, rhs)
+            | InstructionKind::Ne(dest, lhs, rhs) => {
+                if let (Some(z3_dest), Some(z3_l), Some(z3_r)) = (
+                    ctx.z3_bvs.get(&dest),
+                    ctx.z3_bvs.get(&lhs),
+                    ctx.z3_bvs.get(&rhs),
+                ) {
+                    let bit_width = z3_dest.get_size();
+                    let one = z3::ast::BV::from_i64(1, bit_width);
+                    let zero = z3::ast::BV::from_i64(0, bit_width);
+
+                    let cmp = match inst_kind {
+                        InstructionKind::SLt(..) => z3_l.bvslt(z3_r),
+                        InstructionKind::SLe(..) => z3_l.bvsle(z3_r),
+                        InstructionKind::SGt(..) => z3_l.bvsgt(z3_r),
+                        InstructionKind::SGe(..) => z3_l.bvsge(z3_r),
+                        InstructionKind::ULt(..) => z3_l.bvult(z3_r),
+                        InstructionKind::ULe(..) => z3_l.bvule(z3_r),
+                        InstructionKind::UGt(..) => z3_l.bvugt(z3_r),
+                        InstructionKind::UGe(..) => z3_l.bvuge(z3_r),
+                        InstructionKind::Eq(..) => z3_l.eq(z3_r),
+                        InstructionKind::Ne(..) => {
+                            use std::ops::Not;
+                            z3_l.eq(z3_r).not()
+                        }
+                        _ => unreachable!(),
+                    };
+                    let ite = cmp.ite(&one, &zero);
+                    simple_slv.assert(&z3_dest.eq(&ite));
+                }
+                assert_def_recursive(ctx, lhs, simple_slv, visited);
+                assert_def_recursive(ctx, rhs, simple_slv, visited);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn parse_block_id(s: &str) -> Option<BlockId> {
+    if let Some(pos) = s.find("_block_") {
+        let start = pos + 7;
+        let mut end = start;
+        while end < s.len() && s.as_bytes()[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end > start {
+            if let Ok(id) = s[start..end].parse::<usize>() {
+                return Some(BlockId(id));
+            }
+        }
+    }
+    if let Some(pos) = s.find("_edge_") {
+        let start = pos + 6;
+        let mut end = start;
+        while end < s.len() && s.as_bytes()[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end > start {
+            if let Ok(id) = s[start..end].parse::<usize>() {
+                return Some(BlockId(id));
+            }
+        }
+    }
+    None
+}
+
+fn get_predecessors(func: &Function, block_id: BlockId) -> Vec<(BlockId, Option<Value>, bool)> {
+    let mut preds = Vec::new();
+    for block in &func.blocks {
+        if let Some(last_inst) = block.instructions.last() {
+            match &last_inst.kind {
+                InstructionKind::Jump(target) => {
+                    if *target == block_id {
+                        preds.push((block.id, None, true));
+                    }
+                }
+                InstructionKind::Branch(cond, t_block, f_block) => {
+                    if *t_block == block_id {
+                        preds.push((block.id, Some(*cond), true));
+                    }
+                    if *f_block == block_id {
+                        preds.push((block.id, Some(*cond), false));
+                    }
+                }
+                InstructionKind::Match(_val, cases, default, _) => {
+                    for target in cases.values() {
+                        if *target == block_id {
+                            preds.push((block.id, None, true));
+                        }
+                    }
+                    if *default == block_id {
+                        preds.push((block.id, None, true));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    preds
+}
+
+fn get_concrete_path_cond<
+    B: SolverBackend<
+        Bool = z3::ast::Bool,
+        Int = z3::ast::Int,
+        Float = z3::ast::Float,
+        BV = z3::ast::BV,
+        Array = z3::ast::Array,
+    >,
+>(
+    ctx: &TranslationContext<'_, B>,
+    block_id: BlockId,
+    visited: &mut std::collections::HashSet<BlockId>,
+) -> z3::ast::Bool {
+    if block_id == ctx.func.entry_block {
+        return z3::ast::Bool::from_bool(true);
+    }
+    if !visited.insert(block_id) {
+        return z3::ast::Bool::from_bool(true);
+    }
+
+    let preds = get_predecessors(ctx.func, block_id);
+    if preds.is_empty() {
+        return z3::ast::Bool::from_bool(false);
+    }
+
+    let mut incoming_conds = Vec::new();
+    for (pred_id, branch_cond_opt, is_true) in preds {
+        let pred_concrete = get_concrete_path_cond(ctx, pred_id, visited);
+        if let Some(cond_val) = branch_cond_opt {
+            if let Some(z3_cond) = ctx.z3_bvs.get(&cond_val) {
+                let bit_width = z3_cond.get_size();
+                let one = z3::ast::BV::from_i64(1, bit_width);
+                let cmp = z3_cond.eq(&one);
+                let edge_cond = if is_true {
+                    z3::ast::Bool::and(&[&pred_concrete, &cmp])
+                } else {
+                    use std::ops::Not;
+                    z3::ast::Bool::and(&[&pred_concrete, &cmp.not()])
+                };
+                incoming_conds.push(edge_cond);
+            } else {
+                incoming_conds.push(pred_concrete);
+            }
+        } else {
+            incoming_conds.push(pred_concrete);
+        }
+    }
+
+    visited.remove(&block_id);
+    let refs: Vec<&z3::ast::Bool> = incoming_conds.iter().collect();
+    z3::ast::Bool::or(&refs)
 }

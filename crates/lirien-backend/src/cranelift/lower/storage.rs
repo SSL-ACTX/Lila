@@ -110,7 +110,7 @@ impl StorageDest {
             }
             StorageDest::Addr(ptr) => {
                 let size_val = ctx.builder.ins().iconst(types::I64, size as i64);
-                let dest_addr = ctx.builder.ins().iadd_imm(*ptr, offset as i64);
+                let dest_addr = ctx.builder.ins().iadd_imm_s(*ptr, offset as i64);
                 ctx.builder
                     .call_memcpy(ctx.module.target_config(), dest_addr, src_val, size_val);
             }
@@ -195,7 +195,10 @@ pub fn store_to_stack<M: Module>(
             &mut val_idx,
         );
     } else {
-        let val = super::utils::get_val(&ctx.values, &src);
+        let val =
+            ctx.values.get(&src).cloned().unwrap_or_else(|| {
+                panic!("Value v{} (type: {:?}) not found in values map", src.0, ty)
+            });
         let size = ty.size(&ctx.ssa_func.struct_layouts) as i32;
         if ty.is_composite() {
             dest.copy(ctx, val, slot_offset, size as usize);
@@ -225,7 +228,10 @@ pub fn store_to_memory<M: Module>(
             &mut val_idx,
         );
     } else {
-        let val = super::utils::get_val(&ctx.values, &src);
+        let val =
+            ctx.values.get(&src).cloned().unwrap_or_else(|| {
+                panic!("Value v{} (type: {:?}) not found in values map", src.0, ty)
+            });
         let size = ty.size(&ctx.ssa_func.struct_layouts) as i32;
         if ty.is_composite() {
             dest.copy(ctx, val, dest_offset, size as usize);

@@ -37,19 +37,20 @@ from lirien.clif import clif, v0, v1, v2
 # Input preconditions
 Positive = Refined[i64, lambda x: x > 0]
 
+
 @verify
 def optimized_kernel(a: i64, b: Positive) -> i64:
     # Standard Python code can precede the block
     offset = 42
-    
+
     # Inline CLIF Block: maps Python variables to symbolic virtual registers
     # 'inputs' pins existing variables to virtual registers
     # 'outputs' maps virtual registers back to Python variables
     with clif(inputs={a: v0, b: v1, offset: v2}, outputs={v3: "res"}):
         # 1-to-1 mapping to Cranelift instructions:
-        v4 = v0 + v2          # iadd (a + offset)
-        v3 = v4 // v1         # sdiv (v4 // b) -> Proven safe by Z3 because b > 0
-        
+        v4 = v0 + v2  # iadd (a + offset)
+        v3 = v4 // v1  # sdiv (v4 // b) -> Proven safe by Z3 because b > 0
+
     return res
 ```
 
@@ -59,10 +60,11 @@ For pointer operations and array/buffer accesses, the DSL can hijack Python's in
 ```python
 from lirien.clif import clif, v0, v1, v2
 
+
 @verify
 def fast_store(ptr: i64, val: i64) -> None:
     with clif(inputs={ptr: v0, val: v1}):
-        v0[0] = v1            # Lowered directly to 'store.i64' in Cranelift
+        v0[0] = v1  # Lowered directly to 'store.i64' in Cranelift
         # v2 = v0[8]          # Lowered directly to 'load.i64' with offset +8
 ```
 

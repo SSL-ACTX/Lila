@@ -565,7 +565,7 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
             lirien_ir::ir::Type::Struct(ref name) if name == "ClosureEnv"
         );
 
-    let mut arg_types = Vec::new();
+    let mut arg_types = vec![SsaType::Pointer(Box::new(SsaType::I64))];
     for i in 0..ssa_func.arg_count {
         if is_closure && i == 1 {
             continue;
@@ -672,45 +672,6 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
         };
         cg_ctx.sret_ptr = sret_ptr;
 
-        // 2. Pre-declare all Phis across all blocks
-        for ssa_block in &ssa_func.blocks {
-            let current_cl_block = cg_ctx.blocks[&ssa_block.id];
-
-            for inst in &ssa_block.instructions {
-                if let InstructionKind::Phi(dest, _) = &inst.kind {
-                    let ty = ssa_func.get_type(*dest);
-                    if let SsaType::NamedTuple(_) = ty {
-                        let cl_types = lower::get_flattened_types(ssa_func, &ty);
-                        let mut field_vals = Vec::new();
-                        for cl_ty in cl_types {
-                            field_vals
-                                .push(cg_ctx.builder.append_block_param(current_cl_block, cl_ty));
-                        }
-                        cg_ctx.unpacked_values.insert(*dest, field_vals);
-                    } else {
-                        let cl_ty = translate_type(&ty);
-                        let cl_val = cg_ctx.builder.append_block_param(current_cl_block, cl_ty);
-                        cg_ctx.values.insert(*dest, cl_val);
-                        if let SsaType::Buffer(_) = ty {
-                            let cl_len = cg_ctx
-                                .builder
-                                .append_block_param(current_cl_block, types::I64);
-                            cg_ctx.buffer_lengths.insert(*dest, cl_len);
-                        } else if let SsaType::Tensor(_, ref dims) = ty {
-                            let mut dim_vals = Vec::new();
-                            for _ in 0..dims.len() {
-                                let cl_dim = cg_ctx
-                                    .builder
-                                    .append_block_param(current_cl_block, types::I64);
-                                dim_vals.push(cl_dim);
-                            }
-                            cg_ctx.tensor_dims.insert(*dest, dim_vals);
-                        }
-                    }
-                }
-            }
-        }
-
         // 3. Compute Reverse Post-Order (RPO) to visit definitions before uses
         let mut rpo = Vec::new();
         let mut visited = HashSet::new();
@@ -734,8 +695,51 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
         visit(ssa_func.entry_block, ssa_func, &mut visited, &mut rpo);
         rpo.reverse();
 
-        // 4. Lower instructions in RPO
-        for block_id in rpo {
+        // 2. Pre-declare all Phis for reachable blocks in RPO order
+        for &block_id in &rpo {
+            let ssa_block = ssa_func.blocks.iter().find(|b| b.id == block_id).unwrap();
+            let current_cl_block = cg_ctx.blocks[&ssa_block.id];
+
+            for inst in &ssa_block.instructions {
+                if let InstructionKind::Phi(dest, _) = &inst.kind {
+                    let ty = ssa_func.get_type(*dest);
+                    let base_ty = ty.base_type();
+                    if matches!(base_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
+                        let cl_types = lower::get_flattened_types(ssa_func, base_ty);
+                        let mut field_vals = Vec::new();
+                        for cl_ty in cl_types {
+                            field_vals
+                                .push(cg_ctx.builder.append_block_param(current_cl_block, cl_ty));
+                        }
+                        if !field_vals.is_empty() {
+                            cg_ctx.values.insert(*dest, field_vals[0]);
+                        }
+                        cg_ctx.unpacked_values.insert(*dest, field_vals);
+                    } else {
+                        let cl_ty = translate_type(base_ty);
+                        let cl_val = cg_ctx.builder.append_block_param(current_cl_block, cl_ty);
+                        cg_ctx.values.insert(*dest, cl_val);
+                        if let SsaType::Buffer(_) = base_ty {
+                            let cl_len = cg_ctx
+                                .builder
+                                .append_block_param(current_cl_block, types::I64);
+                            cg_ctx.buffer_lengths.insert(*dest, cl_len);
+                        } else if let SsaType::Tensor(_, ref dims) = base_ty {
+                            let mut dim_vals = Vec::new();
+                            for _ in 0..dims.len() {
+                                let cl_dim = cg_ctx
+                                    .builder
+                                    .append_block_param(current_cl_block, types::I64);
+                                dim_vals.push(cl_dim);
+                            }
+                            cg_ctx.tensor_dims.insert(*dest, dim_vals);
+                        }
+                    }
+                }
+            }
+        }
+
+        for &block_id in &rpo {
             let ssa_block = ssa_func
                 .blocks
                 .iter()
@@ -744,9 +748,10 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
             let current_cl_block = cg_ctx.blocks[&ssa_block.id];
             cg_ctx.builder.switch_to_block(current_cl_block);
 
-            if block_id == ssa_func.entry_block {
+            if ssa_block.id == ssa_func.entry_block {
                 // 4.1. Initialize arguments in the entry block
                 let mut p_idx = param_idx; // SRet already handled
+                p_idx += 1; // Skip exception pointer
                 let cl_ctx_param = if is_closure {
                     let ptr = cg_ctx.builder.block_params(entry_block)[p_idx];
                     p_idx += 1;
@@ -762,7 +767,8 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
                         continue;
                     }
                     let ty = ssa_func.get_type(val);
-                    match ty {
+                    let base_ty = ty.base_type();
+                    match base_ty {
                         SsaType::Buffer(_) => {
                             cg_ctx
                                 .values
@@ -785,18 +791,21 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
                             p_idx += 1 + dims.len();
                         }
                         SsaType::NamedTuple(_) | SsaType::Tuple(_) => {
-                            let cl_types = lower::get_flattened_types(ssa_func, &ty);
+                            let cl_types = lower::get_flattened_types(ssa_func, base_ty);
                             let mut field_vals = Vec::new();
                             for _ in cl_types {
                                 field_vals.push(cg_ctx.builder.block_params(entry_block)[p_idx]);
                                 p_idx += 1;
                             }
+                            if !field_vals.is_empty() {
+                                cg_ctx.values.insert(val, field_vals[0]);
+                            }
                             cg_ctx.unpacked_values.insert(val, field_vals);
                         }
-                        _ if ty.is_simd() => {
+                        _ if base_ty.is_simd() => {
                             let ptr = cg_ctx.builder.block_params(entry_block)[p_idx];
                             p_idx += 1;
-                            let cl_ty = translate_type(&ty);
+                            let cl_ty = translate_type(base_ty);
                             let vec_val =
                                 cg_ctx
                                     .builder
@@ -815,8 +824,9 @@ pub fn compile(ssa_func: &SsaFunction) -> Result<usize, String> {
             }
 
             for inst in &ssa_block.instructions {
-                lower::lower_instruction(&mut cg_ctx, inst, ssa_block.id)
-                    .map_err(|e| e.to_string())?;
+                if let Err(e) = lower::lower_instruction(&mut cg_ctx, inst, ssa_block.id) {
+                    return Err(e.to_string());
+                }
             }
         }
 

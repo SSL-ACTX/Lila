@@ -101,8 +101,8 @@ The 4 parallel Quarter-Rounds across columns and diagonals map directly to Lirie
 For bitwise rotations ($\lll$), which can sometimes require extra masking instructions in higher-level SSA representations, the core Quarter-Round kernel can be implemented using inline Cranelift IR (`with clif:`):
 ```python
 with clif(inputs={d: v0, a: v1}, outputs={v2: "out"}):
-    v3 = v0 ^ v1          # bxor
-    v2 = rotl(v3, 16)     # Direct Cranelift bitwise left rotation instruction
+    v3 = v0 ^ v1  # bxor
+    v2 = rotl(v3, 16)  # Direct Cranelift bitwise left rotation instruction
 ```
 
 ### 4.4 Zero-Copy Buffer Slicing
@@ -121,6 +121,7 @@ Key256 = Refined[Buffer[u8], V.len() == 32]
 Nonce192 = Refined[Buffer[u8], V.len() == 24]
 Tag128 = Refined[Buffer[u8], V.len() == 16]
 
+
 @verify
 def encrypt_message(
     key: Key256,
@@ -136,7 +137,7 @@ def encrypt_message(
     """
     # Requires ciphertext_out to match plaintext capacity
     assert len(ciphertext_out) == len(plaintext)
-    
+
     xchacha20poly1305_encrypt(key, nonce, plaintext, aad, ciphertext_out, tag_out)
 ```
 

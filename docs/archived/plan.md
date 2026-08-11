@@ -30,6 +30,7 @@ from lirien.types import Refined, u32
 # Z3 Refinement: An integer strictly between 0 and 100
 Percentile = Refined[u32, lambda x: (x >= 0) & (x <= 100)]
 
+
 @verify
 def apply_boost(base: Mut[Percentile], boost: Ref[u32]) -> None:
     # Z3 will flag a compile error if it cannot prove base + boost <= 100.

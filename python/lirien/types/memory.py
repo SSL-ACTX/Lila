@@ -103,8 +103,19 @@ class Buffer:
     """
 
     @classmethod
-    def alloc(cls, size: int) -> "memoryview":
-        raise NotImplementedError("Use the specialized type hint's alloc method")
+    def alloc(cls, size: int, elem_type=None) -> "memoryview":
+        item_ty = elem_type if elem_type is not None else ctypes.c_uint8
+        if getattr(item_ty, "__lirien_struct__", False):
+            item_cty = item_ty.__lirien_ctypes__
+        else:
+            item_ty_str = str(item_ty).lower()
+            item_cty = ctypes.c_uint8
+            for name, cty in TYPE_MAP.items():
+                if name in item_ty_str:
+                    item_cty = cty
+                    break
+        ArrayType = item_cty * size
+        return ArrayType()
 
     def __class_getitem__(cls, base_type):
         if base_type is Ellipsis:
@@ -112,11 +123,12 @@ class Buffer:
 
         class BufferAnnotated:
             @classmethod
-            def alloc(cls_ann, count: int):
-                if getattr(base_type, "__lirien_struct__", False):
-                    item_cty = base_type.__lirien_ctypes__
+            def alloc(cls_ann, count: int, elem_type=None):
+                target_type = elem_type if elem_type is not None else base_type
+                if getattr(target_type, "__lirien_struct__", False):
+                    item_cty = target_type.__lirien_ctypes__
                 else:
-                    item_ty_str = str(base_type).lower()
+                    item_ty_str = str(target_type).lower()
                     item_cty = ctypes.c_int64
                     for name, cty in TYPE_MAP.items():
                         if name in item_ty_str:

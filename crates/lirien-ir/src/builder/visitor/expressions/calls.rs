@@ -43,6 +43,8 @@ impl CFGBuilder {
                 if let ast::Expr::Name(n) = &*attr.value {
                     if n.id.as_str() == "math" {
                         (format!("math.{}", attr.attr), None, false)
+                    } else if n.id.as_str() == "Buffer" || n.id.as_str() == "buffer" {
+                        (format!("Buffer.{}", attr.attr), None, false)
                     } else if self.func.enum_layouts.contains_key(n.id.as_str()) {
                         // Static enum variant constructor: EnumName.Variant(...)
                         (format!("{}_{}", n.id.as_str(), attr.attr), None, false)
@@ -415,18 +417,60 @@ impl CFGBuilder {
             push_inst!(self, InstructionKind::IToF(dest, arg, Type::F32));
             self.func.set_type(dest, Type::F32);
             return Ok(dest);
-        } else if func_name == "i64" || func_name == "int" {
+        } else if matches!(
+            func_name.as_str(),
+            "i64" | "int" | "u64" | "u32" | "i32" | "u16" | "i16" | "u8" | "i8"
+        ) {
             if s.args.len() != 1 {
-                return Err(builder_error!(General, "i64() expects 1 argument"));
+                return Err(builder_error!(General, "Integer cast expects 1 argument"));
             }
-            let arg = self.visit_expr(s.args[0].clone())?;
+            let target_ty = match func_name.as_str() {
+                "u64" => Type::U64,
+                "u32" => Type::U32,
+                "i32" => Type::I32,
+                "u16" => Type::U16,
+                "i16" => Type::I16,
+                "u8" => Type::U8,
+                "i8" => Type::I8,
+                _ => Type::I64,
+            };
+            let mut arg = self.visit_expr(s.args[0].clone())?;
+            arg = self.auto_load(arg);
             let arg_ty = self.func.get_type(arg);
-            if matches!(arg_ty, Type::I64) {
+            if arg_ty == target_ty {
                 return Ok(arg);
             }
+            if arg_ty.is_int() {
+                let dest = self.func.next_value();
+                push_inst!(self, InstructionKind::Assign(dest, arg));
+                self.func.set_type(dest, target_ty);
+                return Ok(dest);
+            } else if arg_ty.is_float() {
+                let dest = self.func.next_value();
+                push_inst!(self, InstructionKind::FToI(dest, arg, target_ty.clone()));
+                self.func.set_type(dest, target_ty);
+                return Ok(dest);
+            }
+        } else if func_name == "Buffer.alloc" || func_name == "buffer.alloc" {
+            if s.args.len() < 1 || s.args.len() > 2 {
+                return Err(builder_error!(General, "Buffer.alloc expects 1 or 2 arguments (size, [elem_type])"));
+            }
+            let size_val = self.visit_expr(s.args[0].clone())?;
+            let size_val = self.auto_load(size_val);
+            let elem_ty = if s.args.len() == 2 {
+                crate::builder::metadata::parse_type(
+                    &s.args[1],
+                    &self.type_aliases,
+                    &self.named_tuple_names,
+                    &self.typed_dict_names,
+                    &self.enum_names,
+                )?
+            } else {
+                Type::U8
+            };
             let dest = self.func.next_value();
-            push_inst!(self, InstructionKind::FToI(dest, arg, Type::I64));
-            self.func.set_type(dest, Type::I64);
+            push_inst!(self, InstructionKind::Alloc(dest, Type::Buffer(Box::new(elem_ty.clone()))));
+            self.func.set_type(dest, Type::Buffer(Box::new(elem_ty)));
             return Ok(dest);
         } else if func_name == "len" {
             if s.args.len() != 1 {

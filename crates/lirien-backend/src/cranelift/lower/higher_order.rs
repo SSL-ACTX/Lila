@@ -1,5 +1,6 @@
 use super::{
-    get_all_cl_values, get_flattened_types, get_val, translate_type, CodegenContext, LoweringError,
+    get_all_cl_values, get_flattened_types, get_val, get_val_with_ctx, translate_type,
+    CodegenContext, LoweringError,
 };
 use cranelift::codegen::ir::MemFlagsData;
 use cranelift::prelude::*;
@@ -32,7 +33,7 @@ pub fn lower<M: Module>(
     let (sig, is_sret, is_register_composite_ret) =
         super::build_cranelift_signature(ctx.ssa_func, &arg_types, &ret_ty, is_closure, ctx.module);
 
-    let cl_fn_val = get_val(&ctx.values, &fn_ptr);
+    let cl_fn_val = get_val_with_ctx(ctx, &fn_ptr);
     let cl_fn_ptr = if is_closure {
         ctx.builder
             .ins()
@@ -111,7 +112,7 @@ pub fn lower_lambda<M: Module>(
     // Closure Signature: (ctx_ptr, ...args) -> ret
     sig.params.push(AbiParam::new(types::I64)); // ctx_ptr
     for arg_ty in &arg_types {
-        if let SsaType::NamedTuple(_) = arg_ty {
+        if matches!(arg_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
             for cl_ty in get_flattened_types(ctx.ssa_func, arg_ty) {
                 sig.params.push(AbiParam::new(cl_ty));
             }
@@ -123,7 +124,7 @@ pub fn lower_lambda<M: Module>(
         }
     }
 
-    if let SsaType::NamedTuple(_) = ret_ty {
+    if matches!(ret_ty, SsaType::NamedTuple(_) | SsaType::Tuple(_)) {
         for cl_ty in get_flattened_types(ctx.ssa_func, &ret_ty) {
             sig.returns.push(AbiParam::new(cl_ty));
         }
@@ -173,22 +174,23 @@ pub fn lower_lambda<M: Module>(
 
     // Store captures
     for (i, capture) in captures.iter().enumerate() {
-        let val = get_val(&ctx.values, capture);
-        let offset = capture_offsets[i];
-        let ty = ctx.ssa_func.get_type(*capture);
+        if let Some(val) = ctx.values.get(capture).cloned() {
+            let offset = capture_offsets[i];
+            let ty = ctx.ssa_func.get_type(*capture);
 
-        if ty.is_composite() {
-            let dest_with_offset = ctx.builder.ins().iadd_imm(closure_ptr, offset as i64);
-            super::copy_memory(
-                &mut ctx.builder,
-                val,
-                dest_with_offset,
-                ty.size(&ctx.ssa_func.struct_layouts),
-            );
-        } else {
-            ctx.builder
-                .ins()
-                .store(MemFlagsData::new(), val, closure_ptr, offset as i32);
+            if ty.is_composite() {
+                let dest_with_offset = ctx.builder.ins().iadd_imm_s(closure_ptr, offset as i64);
+                super::copy_memory(
+                    &mut ctx.builder,
+                    val,
+                    dest_with_offset,
+                    ty.size(&ctx.ssa_func.struct_layouts),
+                );
+            } else {
+                ctx.builder
+                    .ins()
+                    .store(MemFlagsData::new(), val, closure_ptr, offset as i32);
+            }
         }
     }
 

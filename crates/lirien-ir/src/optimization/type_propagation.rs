@@ -358,22 +358,7 @@ pub fn propagate_types(func: &mut Function) {
                         }
 
                         if base_ty != Type::Unknown && all_base_types_match {
-                            let new_ty = if !refined_sources.is_empty() {
-                                refined_sources.sort_by_key(|v| v.0);
-                                let constraints: Vec<String> = refined_sources
-                                    .iter()
-                                    .map(|v| format!("(= {{v}} {})", v))
-                                    .collect();
-                                let combined = if constraints.len() == 1 {
-                                    constraints[0].clone()
-                                } else {
-                                    format!("(| {})", constraints.join(" "))
-                                };
-                                Type::Refined(Box::new(base_ty), combined)
-                            } else {
-                                base_ty
-                            };
-
+                            let new_ty = base_ty;
                             if current_ty != new_ty {
                                 new_types.insert(*d, new_ty);
                             }

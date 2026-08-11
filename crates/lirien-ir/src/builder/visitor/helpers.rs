@@ -35,6 +35,26 @@ impl CFGBuilder {
             | Type::Array(_, _) => {
                 push_inst!(self, InstructionKind::ConstInt(val, 0)); // null pointer / 0
             }
+            Type::Tuple(ref elt_types) => {
+                let mut elts = Vec::new();
+                for elt_ty in elt_types {
+                    elts.push(self.dummy_value(elt_ty)?);
+                }
+                push_inst!(self, InstructionKind::TupleCreate(val, elts));
+            }
+            Type::NamedTuple(ref name) | Type::Struct(ref name) => {
+                let fields = self
+                    .func
+                    .struct_layouts
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut elts = Vec::new();
+                for (_, f_ty) in &fields {
+                    elts.push(self.dummy_value(f_ty)?);
+                }
+                push_inst!(self, InstructionKind::StructCreate(val, name.clone(), elts));
+            }
             _ => {
                 push_inst!(self, InstructionKind::ConstInt(val, 0));
             }

@@ -353,7 +353,7 @@ thread_local! {
     static CACHED_FUNC_NAME_REACH: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
-fn get_cached_instruction<
+pub(crate) fn get_cached_instruction<
     B: crate::backend::SolverBackend<
         Bool = z3::ast::Bool,
         Int = z3::ast::Int,

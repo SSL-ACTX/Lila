@@ -16,6 +16,7 @@ This is useful for:
 ```python
 from lirien import jit, i64
 
+
 @jit
 def fast_add(a: i64, b: i64) -> i64:
     # Compiles directly via Cranelift, bypassing Z3 verification
@@ -34,6 +35,7 @@ This allows you to map Python variables directly to SSA virtual registers (`v0`,
 from lirien import verify, i64, Box
 from lirien.clif import clif, v0, v1, v2, v3
 
+
 @verify
 def clif_kernel(a: i64, b: i64) -> i64:
     offset = 42
@@ -41,6 +43,7 @@ def clif_kernel(a: i64, b: i64) -> i64:
         v4 = v0 + v2
         v3 = v4 // v1
     return res
+
 
 @verify
 def clif_store(ptr: Box[i64], val: i64) -> None:
@@ -75,6 +78,7 @@ from lirien import verify, tracing, LIVENESS, VERIFY, SSA, Z3
 
 # Enable trace levels for Z3 queries, info for SSA, and debug for verify
 with tracing({VERIFY: "debug", Z3: "trace", SSA: "info"}):
+
     @verify
     def target(x: i64) -> i64:
         return x + 1
@@ -90,6 +94,7 @@ Available subsystems:
 For persistent global logging, use `configure_tracing()`:
 ```python
 from lirien import configure_tracing, BACKEND
+
 configure_tracing({BACKEND: "warn"})
 ```
 

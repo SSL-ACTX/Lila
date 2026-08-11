@@ -1,4 +1,4 @@
-use super::{get_all_cl_values, get_val, CodegenContext, LoweringError};
+use super::{get_all_cl_values, get_flattened_types, get_val, CodegenContext, LoweringError};
 use cranelift::codegen::ir::{BlockArg, MemFlagsData};
 use cranelift::prelude::*;
 use cranelift_module::Module;
@@ -18,9 +18,16 @@ pub fn lower<M: Module>(
             for ssa_block_iter in &ctx.ssa_func.blocks {
                 if ssa_block_iter.id == *target {
                     for inst_iter in &ssa_block_iter.instructions {
-                        if let InstructionKind::Phi(_, mappings) = &inst_iter.kind {
+                        if let InstructionKind::Phi(dest, mappings) = &inst_iter.kind {
                             if let Some(src_val) = mappings.get(&current_ssa_block_id) {
                                 args.extend(get_all_cl_values(ctx, src_val));
+                            } else {
+                                let phi_ty = ctx.ssa_func.get_type(*dest);
+                                let cl_types =
+                                    get_flattened_types(ctx.ssa_func, phi_ty.base_type());
+                                for cl_ty in cl_types {
+                                    args.push(ctx.builder.ins().iconst(cl_ty, 0));
+                                }
                             }
                         }
                     }
@@ -30,7 +37,7 @@ pub fn lower<M: Module>(
             ctx.builder.ins().jump(dest_block, &args);
         }
         InstructionKind::Branch(cond, t, f) => {
-            let c = get_val(&ctx.values, cond);
+            let c = super::get_val_with_ctx(ctx, cond);
             let t_block = ctx.blocks[t];
             let f_block = ctx.blocks[f];
 
@@ -40,18 +47,32 @@ pub fn lower<M: Module>(
             for ssa_block_iter in &ctx.ssa_func.blocks {
                 if ssa_block_iter.id == *t {
                     for inst_iter in &ssa_block_iter.instructions {
-                        if let InstructionKind::Phi(_, mappings) = &inst_iter.kind {
+                        if let InstructionKind::Phi(dest, mappings) = &inst_iter.kind {
                             if let Some(src_val) = mappings.get(&current_ssa_block_id) {
                                 t_args.extend(get_all_cl_values(ctx, src_val));
+                            } else {
+                                let phi_ty = ctx.ssa_func.get_type(*dest);
+                                let cl_types =
+                                    get_flattened_types(ctx.ssa_func, phi_ty.base_type());
+                                for cl_ty in cl_types {
+                                    t_args.push(ctx.builder.ins().iconst(cl_ty, 0));
+                                }
                             }
                         }
                     }
                 }
                 if ssa_block_iter.id == *f {
                     for inst_iter in &ssa_block_iter.instructions {
-                        if let InstructionKind::Phi(_, mappings) = &inst_iter.kind {
+                        if let InstructionKind::Phi(dest, mappings) = &inst_iter.kind {
                             if let Some(src_val) = mappings.get(&current_ssa_block_id) {
                                 f_args.extend(get_all_cl_values(ctx, src_val));
+                            } else {
+                                let phi_ty = ctx.ssa_func.get_type(*dest);
+                                let cl_types =
+                                    get_flattened_types(ctx.ssa_func, phi_ty.base_type());
+                                for cl_ty in cl_types {
+                                    f_args.push(ctx.builder.ins().iconst(cl_ty, 0));
+                                }
                             }
                         }
                     }
@@ -60,7 +81,7 @@ pub fn lower<M: Module>(
 
             let t_args: Vec<BlockArg> = t_args.into_iter().map(BlockArg::Value).collect();
             let f_args: Vec<BlockArg> = f_args.into_iter().map(BlockArg::Value).collect();
-            let cond_b1 = ctx.builder.ins().icmp_imm(IntCC::NotEqual, c, 0);
+            let cond_b1 = ctx.builder.ins().icmp_imm_s(IntCC::NotEqual, c, 0);
             ctx.builder
                 .ins()
                 .brif(cond_b1, t_block, &t_args, f_block, &f_args);
@@ -119,6 +140,12 @@ pub fn lower<M: Module>(
             ) {
                 let mut cl_vals = Vec::new();
                 if let Some(v) = val {
+                    eprintln!(
+                        "[DEBUG] Return val: {:?}, in unpacked_values: {}, unpacked len: {:?}",
+                        v,
+                        ctx.unpacked_values.contains_key(v),
+                        ctx.unpacked_values.get(v).map(|v| v.len())
+                    );
                     cl_vals.extend(get_all_cl_values(ctx, v));
                 }
 

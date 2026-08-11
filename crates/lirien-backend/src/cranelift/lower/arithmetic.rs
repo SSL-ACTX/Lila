@@ -1,4 +1,4 @@
-use super::{get_val, CodegenContext, LoweringError};
+use super::{get_val, get_val_with_ctx, CodegenContext, LoweringError};
 use cranelift::prelude::*;
 use cranelift_module::Module;
 use lirien_ir::ir::{InstructionKind, Type};
@@ -9,8 +9,8 @@ pub fn lower<M: Module>(
 ) -> Result<(), LoweringError> {
     macro_rules! bin_op {
         ($dest:expr, $lhs:expr, $rhs:expr, $op:ident) => {{
-            let l = get_val(&ctx.values, $lhs);
-            let r = get_val(&ctx.values, $rhs);
+            let l = get_val_with_ctx(ctx, $lhs);
+            let r = get_val_with_ctx(ctx, $rhs);
             let l_ty = ctx.builder.func.dfg.value_type(l);
             let r_ty = ctx.builder.func.dfg.value_type(r);
             let r_adj = if l_ty != r_ty {
@@ -28,7 +28,18 @@ pub fn lower<M: Module>(
                 l
             };
             let res = ctx.builder.ins().$op(l_adj, r_adj);
-            ctx.values.insert(*$dest, res);
+            let target_ty = super::translate_type(&ctx.ssa_func.get_type(*$dest));
+            let res_ty = ctx.builder.func.dfg.value_type(res);
+            let res_adj = if res_ty != target_ty {
+                if target_ty.bits() > res_ty.bits() {
+                    ctx.builder.ins().uextend(target_ty, res)
+                } else {
+                    ctx.builder.ins().ireduce(target_ty, res)
+                }
+            } else {
+                res
+            };
+            ctx.values.insert(*$dest, res_adj);
         }};
     }
 
@@ -40,13 +51,23 @@ pub fn lower<M: Module>(
         int_cc: IntCC,
         float_cc: FloatCC,
     ) {
-        let l = get_val(&ctx.values, lhs);
-        let r = get_val(&ctx.values, rhs);
+        let l = get_val_with_ctx(ctx, lhs);
+        let r = get_val_with_ctx(ctx, rhs);
         let l_ty = ctx.builder.func.dfg.value_type(l);
-        let res = if l_ty.is_float() {
-            ctx.builder.ins().fcmp(float_cc, l, r)
+        let r_ty = ctx.builder.func.dfg.value_type(r);
+        let r_adj = if l_ty != r_ty {
+            if l_ty.bits() < r_ty.bits() {
+                ctx.builder.ins().ireduce(l_ty, r)
+            } else {
+                ctx.builder.ins().uextend(l_ty, r)
+            }
         } else {
-            ctx.builder.ins().icmp(int_cc, l, r)
+            r
+        };
+        let res = if l_ty.is_float() {
+            ctx.builder.ins().fcmp(float_cc, l, r_adj)
+        } else {
+            ctx.builder.ins().icmp(int_cc, l, r_adj)
         };
         let res_ty = super::translate_type(&ctx.ssa_func.get_type(*dest));
         let res_final = ctx.builder.ins().bmask(res_ty, res);
@@ -78,7 +99,7 @@ pub fn lower<M: Module>(
         let mut res_val = ctx.builder.inst_results(call)[0];
 
         if negate {
-            res_val = ctx.builder.ins().bxor_imm(res_val, 1);
+            res_val = ctx.builder.ins().bxor_imm_u(res_val, 1);
         }
 
         ctx.values.insert(*dest, res_val);
@@ -106,7 +127,7 @@ pub fn lower<M: Module>(
         InstructionKind::FDiv(dest, lhs, rhs) => bin_op!(dest, lhs, rhs, fdiv),
 
         InstructionKind::Abs(dest, src) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let ssa_ty = ctx.ssa_func.get_type(*src);
             let res = if ssa_ty.is_float() {
                 ctx.builder.ins().fabs(s)
@@ -116,7 +137,7 @@ pub fn lower<M: Module>(
             ctx.values.insert(*dest, res);
         }
         InstructionKind::Neg(dest, src) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let ssa_ty = ctx.ssa_func.get_type(*src);
             let res = if ssa_ty.is_float() {
                 ctx.builder.ins().fneg(s)
@@ -126,8 +147,8 @@ pub fn lower<M: Module>(
             ctx.values.insert(*dest, res);
         }
         InstructionKind::Min(dest, lhs, rhs) => {
-            let l = get_val(&ctx.values, lhs);
-            let r = get_val(&ctx.values, rhs);
+            let l = get_val_with_ctx(ctx, lhs);
+            let r = get_val_with_ctx(ctx, rhs);
             let ssa_ty = ctx.ssa_func.get_type(*lhs);
             let res = if ssa_ty.is_float() {
                 ctx.builder.ins().fmin(l, r)
@@ -141,8 +162,8 @@ pub fn lower<M: Module>(
             ctx.values.insert(*dest, res);
         }
         InstructionKind::Max(dest, lhs, rhs) => {
-            let l = get_val(&ctx.values, lhs);
-            let r = get_val(&ctx.values, rhs);
+            let l = get_val_with_ctx(ctx, lhs);
+            let r = get_val_with_ctx(ctx, rhs);
             let ssa_ty = ctx.ssa_func.get_type(*lhs);
             let res = if ssa_ty.is_float() {
                 ctx.builder.ins().fmax(l, r)
@@ -157,12 +178,12 @@ pub fn lower<M: Module>(
         }
         InstructionKind::Avg(dest, lhs, rhs) => bin_op!(dest, lhs, rhs, avg_round),
         InstructionKind::FSqrt(dest, src) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let res = ctx.builder.ins().sqrt(s);
             ctx.values.insert(*dest, res);
         }
         InstructionKind::SIMDSplat(dest, scalar) => {
-            let s = get_val(&ctx.values, scalar);
+            let s = get_val_with_ctx(ctx, scalar);
             let ty = ctx.ssa_func.get_type(*dest);
             let cl_ty = super::translate_type(&ty);
             let lane_ty = cl_ty.lane_type();
@@ -176,19 +197,19 @@ pub fn lower<M: Module>(
         }
 
         InstructionKind::SIMDExtractLane(dest, vec, lane) => {
-            let v = get_val(&ctx.values, vec);
+            let v = get_val_with_ctx(ctx, vec);
             let res = ctx.builder.ins().extractlane(v, *lane as u8);
             ctx.values.insert(*dest, res);
         }
         InstructionKind::SIMDInsertLane(dest, vec, val, lane) => {
-            let v = get_val(&ctx.values, vec);
-            let s = get_val(&ctx.values, val);
+            let v = get_val_with_ctx(ctx, vec);
+            let s = get_val_with_ctx(ctx, val);
             let res = ctx.builder.ins().insertlane(v, s, *lane as u8);
             ctx.values.insert(*dest, res);
         }
 
         InstructionKind::Not(dest, src) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let res = ctx.builder.ins().bnot(s);
             ctx.values.insert(*dest, res);
         }
@@ -285,19 +306,19 @@ pub fn lower<M: Module>(
             FloatCC::Equal,
         ),
         InstructionKind::IToF(dest, src, ty) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let target_ty = super::translate_type(ty);
             let res = ctx.builder.ins().fcvt_from_sint(target_ty, s);
             ctx.values.insert(*dest, res);
         }
         InstructionKind::FToI(dest, src, ty) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let target_ty = super::translate_type(ty);
             let res = ctx.builder.ins().fcvt_to_sint(target_ty, s);
             ctx.values.insert(*dest, res);
         }
         InstructionKind::FConv(dest, src, target_ty) => {
-            let s = get_val(&ctx.values, src);
+            let s = get_val_with_ctx(ctx, src);
             let src_ty = ctx.ssa_func.get_type(*src);
             let target_cl_ty = super::translate_type(target_ty);
             let res = match (src_ty, target_ty) {

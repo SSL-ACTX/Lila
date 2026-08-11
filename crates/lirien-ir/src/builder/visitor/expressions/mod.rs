@@ -28,6 +28,7 @@ impl CFGBuilder {
             ast::Expr::Call(s) => self.visit_call(s),
             ast::Expr::Lambda(s) => self.visit_lambda(s),
             ast::Expr::ListComp(s) => self.visit_listcomp(s),
+            ast::Expr::IfExp(s) => self.visit_ifexp(s),
             _ => Err(builder_error!(
                 General,
                 "Expression type {:?} not yet supported",
@@ -720,5 +721,59 @@ impl CFGBuilder {
         let final_list_val = self.read_variable(list_var_name, exit_block)?;
         self.seal_block(exit_block)?;
         Ok(final_list_val)
+    }
+
+    pub fn visit_ifexp(&mut self, i: ast::ExprIfExp) -> BuilderResult<Value> {
+        let cond = self.visit_expr(*i.test)?;
+        let cond = self.auto_load(cond);
+
+        // Constant pruning for IfExp if possible
+        if let Some(val) = self.get_constant_int(cond) {
+            if val != 0 {
+                return self.visit_expr(*i.body);
+            } else {
+                return self.visit_expr(*i.orelse);
+            }
+        }
+
+        let temp_var = format!("__ifexp_{}", self.func.next_value().0);
+        let prev_block = self.current_block;
+        let true_block = self.create_block();
+        let false_block = self.create_block();
+        let merge_block = self.create_block();
+
+        push_inst!(self, InstructionKind::Branch(cond, true_block, false_block));
+        self.link_blocks(prev_block, true_block);
+        self.link_blocks(prev_block, false_block);
+
+        self.seal_block(true_block)?;
+        self.seal_block(false_block)?;
+
+        // True block
+        self.start_block(true_block);
+        let then_val = self.visit_expr(*i.body)?;
+        let then_val = self.auto_load(then_val);
+        self.write_variable(temp_var.clone(), true_block, then_val);
+        push_inst!(self, InstructionKind::Jump(merge_block));
+        self.link_blocks(true_block, merge_block);
+
+        // False block
+        self.start_block(false_block);
+        let else_val = self.visit_expr(*i.orelse)?;
+        let else_val = self.auto_load(else_val);
+        self.write_variable(temp_var.clone(), false_block, else_val);
+        push_inst!(self, InstructionKind::Jump(merge_block));
+        self.link_blocks(false_block, merge_block);
+
+        // Merge block
+        self.seal_block(merge_block)?;
+        self.start_block(merge_block);
+
+        let final_val = self.read_variable(temp_var, merge_block)?;
+        let then_ty = self.func.get_type(then_val);
+        if then_ty != Type::Unknown {
+            self.func.set_type(final_val, then_ty);
+        }
+        Ok(final_val)
     }
 }

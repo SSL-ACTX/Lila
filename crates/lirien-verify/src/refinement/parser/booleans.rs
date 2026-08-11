@@ -118,9 +118,10 @@ pub(crate) fn parse_bool_expr(
                     _ => unreachable!(),
                 }
             } else {
-                if let Some(res) = resolver {
-                    let lhs_bv = super::bitvectors::parse_bv_expr(parts[1], v_bv, v_int, Some(res));
-                    let rhs_bv = super::bitvectors::parse_bv_expr(parts[2], v_bv, v_int, Some(res));
+                let can_parse_bv = resolver.is_some() || (v_bv.is_some() && !has_other_vars(sexpr));
+                if can_parse_bv {
+                    let lhs_bv = super::bitvectors::parse_bv_expr(parts[1], v_bv, v_int, resolver);
+                    let rhs_bv = super::bitvectors::parse_bv_expr(parts[2], v_bv, v_int, resolver);
                     if let (Ok(l), Ok(r)) = (lhs_bv, rhs_bv) {
                         let size_l = l.get_size();
                         let size_r = r.get_size();
@@ -158,4 +159,19 @@ pub(crate) fn parse_bool_expr(
         }
         _ => Err(format!("Unknown boolean operator: {}", parts[0])),
     }
+}
+
+fn has_other_vars(sexpr: &str) -> bool {
+    let clean = sexpr.replace("VALUE_PLACEHOLDER", "");
+    let mut chars = clean.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == 'v' {
+            if let Some(&next_c) = chars.peek() {
+                if next_c.is_ascii_digit() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }

@@ -315,9 +315,9 @@ impl CFGBuilder {
         dest: Value,
     ) -> BuilderResult<Value> {
         let arr_ty = self.func.get_type(arr);
-        let (inner_ty, total_size) = match arr_ty {
-            Type::Array(inner, size) => (inner, size.map(|s| s as i64)),
-            Type::Buffer(inner) => (inner, None),
+        let (inner_ty, total_size) = match &arr_ty {
+            Type::Array(inner, size) => (inner.clone(), size.map(|s| s as i64)),
+            Type::Buffer(inner) => (inner.clone(), None),
             _ => {
                 return Err(builder_error!(
                     General,
@@ -344,10 +344,15 @@ impl CFGBuilder {
             push_inst!(self, InstructionKind::ConstInt(v, size));
             self.func.set_type(v, Type::I64);
             v
+        } else if matches!(arr_ty, Type::Buffer(_)) {
+            let v = self.func.next_value();
+            push_inst!(self, InstructionKind::BufferLen(v, arr));
+            self.func.set_type(v, Type::I64);
+            v
         } else {
             return Err(builder_error!(
                 General,
-                "Slice end index required for Buffers"
+                "Slice end index required"
             ));
         };
 
@@ -403,7 +408,11 @@ impl CFGBuilder {
             };
         }
 
-        self.func.set_type(dest, Type::Array(inner_ty, new_size));
+        if matches!(arr_ty, Type::Buffer(_)) {
+            self.func.set_type(dest, Type::Buffer(inner_ty));
+        } else {
+            self.func.set_type(dest, Type::Array(inner_ty, new_size));
+        }
         Ok(dest)
     }
 
